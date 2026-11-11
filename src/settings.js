@@ -139,6 +139,12 @@ async function drawSheet() {
       <div id="restoreBox"></div>
     </section>
     <section class="sset">
+      <h3>Start over</h3>
+      ${n ? `<p>Delete every task on this ${isNative ? "phone" : "device"}. Your look, alerts and other settings stay. Save a backup first if you might want them back.</p>
+      <div class="acts"><button class="btn warn" id="sReset">Delete all ${n} task${n === 1 ? "" : "s"}</button><button class="btn" id="sResetBackup">Save a backup first</button></div>`
+      : `<p>No tasks saved, so there's nothing to delete.</p>`}
+    </section>
+    <section class="sset">
       <h3>Storage</h3>
       <dl class="kv">
         <dt>Tasks saved</dt><dd class="mono">${n}</dd>
@@ -161,6 +167,16 @@ async function drawSheet() {
   if (b("sExact")) b("sExact").onclick = async () => { exact = await openExactAlarmSetting(); drawSheet(); };
   b("sBackup").onclick = doBackup;
   b("sRestore").onclick = () => $("#restoreFile").click();
+  if (b("sResetBackup")) b("sResetBackup").onclick = doBackup;
+  if (b("sReset")) b("sReset").onclick = () => {
+    const btn = b("sReset");
+    if (!btn.dataset.armed) { // first tap arms the button for a few seconds; the second tap deletes
+      btn.dataset.armed = "1"; btn.textContent = `Tap again to delete ${n} task${n === 1 ? "" : "s"}`; haptic("warn");
+      setTimeout(() => { if (btn.isConnected && btn.dataset.armed) { delete btn.dataset.armed; btn.textContent = `Delete all ${n} task${n === 1 ? "" : "s"}`; } }, 4000);
+      return;
+    }
+    doReset();
+  };
   if (b("sPersist")) b("sPersist").onclick = async () => { await requestPersist(); drawSheet(); };
   b("sCapDown").onclick = () => { app.setCap(Math.max(1, app.getCap() - 1)); drawSheet(); app.render(); };
   b("sCapUp").onclick = () => { app.setCap(Math.min(12, app.getCap() + 1)); drawSheet(); app.render(); };
@@ -177,6 +193,17 @@ async function doBackup() {
     if (r !== "cancelled") { haptic("success"); app.toast({ t: "Backup saved", s: `${data.count} tasks in ${name}`, ttl: 4000 }); }
   } catch (e) {
     app.toast({ t: "Couldn't save the backup", s: e?.message || "Try again.", ttl: 5000 });
+  }
+}
+
+async function doReset() {
+  try {
+    const snap = await app.resetAll();
+    closeSheet(); haptic("success");
+    app.toast({ t: `Deleted ${snap.tasks.length} task${snap.tasks.length === 1 ? "" : "s"}`, s: "Showing the example tasks until you add your own.", ttl: 10000,
+      undo: () => app.undoReset(snap).catch((e) => app.toast({ t: "Couldn't undo", s: e?.message || "Restore from a backup instead.", ttl: 5000 })) });
+  } catch (e) {
+    app.toast({ t: "Couldn't delete your tasks", s: e?.message || "Nothing was changed.", ttl: 5000 });
   }
 }
 

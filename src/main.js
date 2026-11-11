@@ -19,7 +19,7 @@ import JSZip from "jszip";
 import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
 import { pref, setPref } from "./prefs.js";
-import { loadAll, putTask, putTasks, deleteTask, migrateFromLocalStorage, requestPersist } from "./store.js";
+import { loadAll, putTask, putTasks, deleteTask, clearTasks, migrateFromLocalStorage, requestPersist } from "./store.js";
 import { isNative, saveFile, haptic, initNativeShell, onResume } from "./platform.js";
 import { initNotifications, scheduleSync, webNotify } from "./notify.js";
 import { remindersPanelHTML, wireRemindersPanel, openSheet, closeSheet, initSheet } from "./settings.js";
@@ -1022,5 +1022,19 @@ setTimeout(checkDue,1500);
 function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>scheduleSync(view),
   getCap:()=>cap,setCap:v=>{cap=v;lsSet("dd.cap",cap)},
   reload:async()=>{tasks=await loadAll();examples=tasks.length===0;animIn=true;render();scheduleSync(view)},
-  isExamples:()=>examples,getPersisted:()=>persisted}}
+  isExamples:()=>examples,getPersisted:()=>persisted,
+  // Settings → Delete all tasks. Returns what was removed so Undo can put it back.
+  resetAll:async()=>{
+    const snap={tasks:tasks.slice(),fired:[...fired]};
+    await clearTasks();
+    tasks=[];examples=true;exList=sampleTasks();filter="All";openEdit=null;
+    fired.clear();lsSet("dd.fired",[]);alarms.clear();
+    animIn=true;render();scheduleSync(view);told(); // cancels scheduled reminders and empties other open tabs
+    return snap;
+  },
+  undoReset:async snap=>{
+    await putTasks(snap.tasks);
+    snap.fired.forEach(k=>fired.add(k));lsSet("dd.fired",[...fired].slice(-300));
+    tasks=await loadAll();examples=tasks.length===0;animIn=true;render();scheduleSync(view);told();
+  }}}
 initSheet(appBridge);

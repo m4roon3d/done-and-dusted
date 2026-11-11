@@ -15,6 +15,7 @@ export const putTask = (t) => db.tasks.put(clean(t));
 export const putTasks = (list) => db.tasks.bulkPut(list.map(clean));
 export const deleteTask = (id) => db.tasks.delete(id);
 export const countTasks = () => db.tasks.count();
+export const clearTasks = () => db.tasks.clear(); // tasks only; preferences live in localStorage and stay
 
 // One-time move from the earlier localStorage version of the app.
 export async function migrateFromLocalStorage() {
