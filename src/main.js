@@ -5,7 +5,16 @@ import "@fontsource/manrope/700.css";
 import "@fontsource-variable/bricolage-grotesque";
 import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/instrument-serif/400-italic.css";
+import "@fontsource-variable/quicksand";
+import "@fontsource-variable/nunito";
+import "@fontsource-variable/baloo-2";
+import "@fontsource-variable/dm-sans";
+import "@fontsource-variable/fredoka";
+import "@fontsource-variable/outfit";
+import "@fontsource-variable/karla";
 import "./styles.css";
+import { applyLook, onSystemThemeChange } from "./theme.js";
+applyLook(); // before anything draws
 import JSZip from "jszip";
 import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
@@ -87,6 +96,7 @@ const fx=$("#fx"),ctx=fx.getContext("2d");let parts=[],raf=0;
 function sizeFx(){const r=devicePixelRatio||1;fx.width=innerWidth*r;fx.height=innerHeight*r;ctx.setTransform(r,0,0,r,0,0)}
 addEventListener("resize",sizeFx);sizeFx();
 function tok(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||"#E39A14"}
+onSystemThemeChange(()=>render());
 function burst(x,y,n=26,colors,power=1){
   if(REDUCED.matches)return;
   colors=colors||[tok("--accent"),tok("--c1"),tok("--c3"),tok("--c4"),tok("--c5")];
@@ -423,7 +433,7 @@ function renderDash(list,now,t0){
     const b=e.target.closest("[data-rag]");if(!b)return;
     const k=b.dataset.rag;
     hmReview=hmReview&&hmReview.color===k?null:{color:k,idx:0,total:0};hmSel=null;
-    if(hmReview){const r=b.getBoundingClientRect(),col=tok(k==="r"?"--danger":k==="a"?"--accent":"--ok");burst(r.left+r.width/2,r.top+r.height/2,12,[col,col,tok("--ink")],.6);haptic()}
+    if(hmReview){const r=b.getBoundingClientRect(),col=tok(k==="r"?"--danger":k==="a"?"--amber":"--ok");burst(r.left+r.width/2,r.top+r.height/2,12,[col,col,tok("--ink")],.6);haptic()}
     rs.querySelectorAll(".rag-pill").forEach(x=>{const on=!!hmReview&&x.dataset.rag===hmReview.color;x.classList.toggle("on",on);x.setAttribute("aria-pressed",on)});
     el.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
     redrawReview(false);
@@ -592,7 +602,7 @@ function heatmapHTML(list,now,t0){
   return `<div class="rag-sum" id="ragSum">${pill("r",0,"overdue")}${pill("a",1,"due today or at risk")}${pill("g",2,"on track")}</div>
   <p class="rag-hint">Tap a day to open its tasks, or tap a colour to review its tasks one after another.</p>
   <div class="hm strip" role="group" aria-label="Status by day">${row(-7,"Last 7 days",0)}${row(0,"Today and the next 6 days",7)}</div>
-  <div class="hm-legend"><span><i style="background:var(--danger)"></i>Overdue</span><span><i style="background:var(--accent)"></i>Due today or at risk</span><span><i style="background:var(--ok)"></i>Done or on track</span>
+  <div class="hm-legend"><span><i style="background:var(--danger)"></i>Overdue</span><span><i style="background:var(--amber)"></i>Due today or at risk</span><span><i style="background:var(--ok)"></i>Done or on track</span>
     <span style="flex-basis:100%">Each square is split by how many of that day's tasks are in each colour. The % is how much is done.</span></div>
   <div class="hm-detail" id="hm-detail">${hmDetail(list,now,t0)}</div>`;
 }

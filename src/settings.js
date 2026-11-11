@@ -2,6 +2,7 @@
 import { isNative, platform, saveFile, haptic } from "./platform.js";
 import { permissionState, requestPermission, exactAlarmState, openExactAlarmSetting, sync } from "./notify.js";
 import { pref, setPref } from "./prefs.js";
+import { LOOKS, setLook, setAutoNight, effectiveLook } from "./theme.js";
 import { makeBackup, readBackup, restore, countTasks, isPersisted, requestPersist } from "./store.js";
 
 const $ = (s) => document.querySelector(s);
@@ -45,6 +46,15 @@ export function wireRemindersPanel() {
   if (on) on.onclick = enableReminders;
   if (ex) ex.onclick = async () => { exact = await openExactAlarmSetting(); app.render(); };
   if (ics) ics.onclick = () => app.exportICS(app.view().filter((t) => !t.done && t.due && t.due > Date.now()));
+}
+function changeLook(apply) {
+  const root = document.documentElement;
+  root.classList.add("look-fade");            // colours and corners ease across, not snap
+  apply();
+  haptic();
+  app.render();
+  drawSheet();
+  setTimeout(() => root.classList.remove("look-fade"), 450);
 }
 async function setAlerts(on) {
   setPref("alerts", on);
@@ -108,6 +118,13 @@ async function drawSheet() {
     : perm === "unsupported" ? "Notifications aren't available on this device; you still get the pop-up and chime." : (isNative ? "Phone notifications aren't allowed yet, so alerts only show while the app is open." : "Browser notifications aren't allowed yet, so alerts only show while this tab is in front.");
   $("#sheetBody").innerHTML = `
     <section class="sset">
+      <h3>Look</h3>
+      <div class="looks" role="group" aria-label="Choose a look">${LOOKS.map((l) => `<button class="look" data-look-id="${l.id}" aria-pressed="${pref("look") === l.id}">
+        <span class="sw3" style="background:${l.swatch[0]}"><i class="a" style="background:${l.swatch[1]}"></i><i class="b" style="background:${l.swatch[2]}"></i><i class="c" style="background:${l.swatch[2]}"></i></span>${esc(l.name)}</button>`).join("")}</div>
+      ${pref("look") === "night" ? "" : switchHTML("swNight", pref("autoNight"), "Night Garden after dark", "Switch to the dark look when the phone is in dark mode")}
+      ${pref("look") !== "night" && effectiveLook().id === "night" ? `<p>Showing Night Garden now because your phone is in dark mode.</p>` : ""}
+    </section>
+    <section class="sset">
       <h3>Alerts</h3>
       ${switchHTML("swAlerts", pref("alerts"), "Alert me when a task is due", isNative ? "Phone notification, pop-up and chime" : "Pop-up, chime and browser notification")}
       ${pref("alerts") ? switchHTML("swSound", pref("sound"), "Chime sound", "Played with the pop-up while the app is open") : ""}
@@ -136,6 +153,8 @@ async function drawSheet() {
     </section>
     <p class="about">Done &amp; Dusted ${VERSION} · ${isNative ? (platform === "ios" ? "iPhone" : "Android") : "Web"} · Plan it · Do it · Dust it</p>`;
   const b = (id) => document.getElementById(id);
+  document.querySelectorAll("[data-look-id]").forEach((btn) => { btn.onclick = () => changeLook(() => setLook(btn.dataset.lookId)); });
+  if (b("swNight")) b("swNight").onchange = (e) => changeLook(() => setAutoNight(e.target.checked));
   b("swAlerts").onchange = (e) => setAlerts(e.target.checked);
   if (b("swSound")) b("swSound").onchange = (e) => { setPref("sound", e.target.checked); haptic(); };
   if (b("sRemOn")) b("sRemOn").onclick = enableReminders;
