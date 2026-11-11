@@ -312,7 +312,7 @@ function renderDash(list,now,t0){
     <div class="tile ${overdue.length?"bad":""}" style="--d:2"><div class="k">Overdue</div><div class="v" data-n="${overdue.length}">${overdue.length}</div><div class="s">${overdue.length?"oldest "+fmtDue(Math.min(...overdue.map(t=>t.due))):"all clear"}</div></div>
     <div class="tile" style="--d:3"><div class="k">Done · 7 days</div><div class="v" data-n="${weekDone}">${weekDone}</div><div class="s">${streak} day streak${streak>=3?" 🔥":""}</div></div>
   </div>
-  <div class="panel" style="--d:4"><h4>Status heatmap <small>last 7 days · next 7 days</small></h4>${heatmapHTML(list,now,t0,names)}</div>
+  <div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day</small></h4>${heatmapHTML(list,now,t0)}</div>
   <div class="two">
     <div class="panel ring" style="--d:4"><svg viewBox="0 0 150 150" role="img" aria-label="Today ${Math.round(pct*100)} percent complete">
       <circle cx="75" cy="75" r="${R}" fill="none" stroke="var(--sunk)" stroke-width="14"/>
@@ -343,13 +343,6 @@ function renderDash(list,now,t0){
       const col=tok(b.classList.contains("r")?"--danger":b.classList.contains("a")?"--accent":"--ok");burst(r.left+r.width/2,r.top+r.height/2,10,[col,col,tok("--ink")],.5)}
     $("#hm-detail").innerHTML=hmDetail(view(),Date.now(),sod(Date.now()).getTime());
   });
-  const hw=el.querySelector(".hm-wrap");
-  if(hw){
-    if(hmScroll===null){const td=hw.querySelector(".hm-cell.today"),lb=hw.querySelector(".hm-lbl");if(td&&lb)hmScroll=Math.max(0,td.offsetLeft-lb.offsetWidth-3*(td.offsetWidth+4)-8)}
-    hw.scrollLeft=hmScroll||0;
-    const sw=el.querySelector("#hmSwipe");if(sw)sw.hidden=hw.scrollWidth<=hw.clientWidth+2;
-    hw.addEventListener("scroll",()=>{hmScroll=hw.scrollLeft},{passive:true});
-  }
   const rs=el.querySelector("#ragSum");
   if(rs)rs.addEventListener("click",e=>{
     const b=e.target.closest("[data-rag]");if(!b)return;
@@ -480,7 +473,6 @@ function renderPlan(list,now,t0){
    today     : open & past its time = Red, open later today = Amber, all done = Green
    upcoming  : 3+ tasks or any Important = Amber (heavy / at risk), otherwise Green
    category  : Red if anything overdue, Amber if something due within 48 h, otherwise Green */
-let hmScroll=null;
 let hmSel=null,hmReview=null; // hmReview: {color:"r"|"a"|"g", idx, total}
 const RAGW={r:"Red",a:"Amber",g:"Green"};
 function cellStatus(arr,s,now,t0){
@@ -497,32 +489,28 @@ function catStatus(arr,now){
   if(open.some(t=>t.due<now+2*DAY))return "a";
   return "g";
 }
-function heatmapHTML(list,now,t0,names){
-  const days=[...Array(14)].map((_,i)=>t0+(i-7)*DAY);
-  const rows=[["All",list],...names.map(c=>[c,list.filter(t=>t.cat===c)])];
+function catChips(arr){ // "Work 3 · Home 2" as small labelled chips
+  const m={};arr.forEach(t=>{m[t.cat]=(m[t.cat]||0)+1});
+  return `<div class="cat-counts">${Object.keys(m).sort((x,y)=>m[y]-m[x]||x.localeCompare(y)).map(c=>`<span class="cat-chip" style="--cc:${cc(c)}"><i></i>${esc(c)} <b class="mono">${m[c]}</b></span>`).join("")}</div>`;
+}
+function heatmapHTML(list,now,t0){
   const rg=ragTasks(list,now,t0);
   const pill=(k,i,sub)=>`<button class="rag-pill ${k}${hmReview&&hmReview.color===k?" on":""}" data-rag="${k}" style="--d:${i}" aria-pressed="${!!(hmReview&&hmReview.color===k)}"><span class="dot"></span><b data-n="${rg[k].length}">${rg[k].length}</b><span class="pl">${RAGW[k]}<small>${sub}</small></span></button>`;
-  let h=`<div class="rag-sum" id="ragSum">${pill("r",0,"overdue")}${pill("a",1,"due today or at risk")}${pill("g",2,"on track")}</div>
-  <p class="rag-hint">Tap a colour to review its tasks one after another.</p><div class="hm-wrap"><div class="hm" role="grid" aria-label="Status by category and day">`;
-  h+=`<span></span>`+days.map((s,i)=>{const d=new Date(s);return `<span class="hm-h${s===t0?" now":""}" style="--w:${i}">${s===t0?"<span>Today</span>":d.toLocaleDateString("en-IN",{weekday:"narrow"})+"<br>"+d.getDate()}</span>`}).join("");
-  rows.forEach(([c,arr],ri)=>{
-    const cs=catStatus(arr,now);
-    const win=arr.filter(t=>t.due>=days[0]&&t.due<days[13]+DAY),rowPct=win.length?Math.round(win.filter(t=>t.done).length/win.length*100):null;
-    h+=`<span class="hm-lbl${ri===0?" all":""}" style="--w:${ri}"><span class="dot ${cs}" title="${RAGW[cs]}"></span><span class="nm"${ri?` style="color:${cc(c)}"`:""}>${esc(ri?c:"All tasks")}</span>${rowPct===null?"":`<span class="rp mono" title="${rowPct}% of these two weeks' tasks done">${rowPct}%</span>`}</span>`;
-    days.forEach((s,ci)=>{
-      const day=arr.filter(t=>t.due>=s&&t.due<s+DAY),st=cellStatus(day,s,now,t0);
-      const pct=day.length?Math.round(day.filter(t=>t.done).length/day.length*100):0;
-      const sel=hmSel&&hmSel.cat===c&&hmSel.s===s;
-      const lbl=`${ri?c:"All"}, ${new Date(s).toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"})}: ${day.length?day.length+" task"+(day.length>1?"s":"")+", "+pct+"% done, "+RAGW[st]:"nothing due"}`;
-      h+=`<button class="hm-cell ${st||"n"}${s<t0?" past":""}${s===t0?" today":""}${sel?" sel":""}" style="--w:${ri+ci}" data-c="${esc(c)}" data-s="${s}" aria-label="${esc(lbl)}" title="${esc(lbl)}"${st?"":" tabindex=\"-1\""}>${st?`<span>${pct===100?"✓":pct}</span>`:""}</button>`;
-    });
-    if(ri===0)h+=`<span class="hm-sep"></span>`;
-  });
-  h+=`</div></div>
+  const cell=(s,i)=>{
+    const d=new Date(s),day=list.filter(t=>t.due>=s&&t.due<s+DAY),st=cellStatus(day,s,now,t0);
+    const pct=day.length?Math.round(day.filter(t=>t.done).length/day.length*100):0;
+    const sel=hmSel&&hmSel.s===s;
+    const lbl=`${d.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"})}: ${day.length?day.length+" task"+(day.length>1?"s":"")+", "+pct+"% done, "+RAGW[st]:"nothing due"}`;
+    return `<button class="hm-cell ${st||"n"}${s===t0?" today":""}${sel?" sel":""}" style="--w:${i}" data-c="All" data-s="${s}" aria-label="${esc(lbl)}" title="${esc(lbl)}"${st?"":" tabindex=\"-1\""}>
+      <span class="dw">${s===t0?"Today":d.toLocaleDateString("en-IN",{weekday:"short"})}</span><span class="dn">${d.getDate()}</span><b class="dp">${!st?"–":pct===100?"✓":pct+"%"}</b></button>`;
+  };
+  const row=(from,label,off)=>`<div class="strip-grp"><div class="strip-lbl">${label}</div><div class="strip-row">${[...Array(7)].map((_,i)=>cell(t0+(from+i)*DAY,off+i)).join("")}</div></div>`;
+  return `<div class="rag-sum" id="ragSum">${pill("r",0,"overdue")}${pill("a",1,"due today or at risk")}${pill("g",2,"on track")}</div>
+  <p class="rag-hint">Tap a colour to review its tasks one after another, or tap a day to see what's in it.</p>
+  <div class="hm strip" role="group" aria-label="Status by day">${row(-7,"Last 7 days",0)}${row(0,"Today and the next 6 days",7)}</div>
   <div class="hm-legend"><span><i style="background:var(--danger)"></i>Missed or overdue</span><span><i style="background:var(--accent)"></i>Due today or a heavy day</span><span><i style="background:var(--ok)"></i>Done or on track</span>
-<span class="ramp">Number = % done · ✓ = all done</span><span id="hmSwipe" hidden style="flex-basis:100%">Swipe the grid sideways for earlier and later days.</span></div>
+    <span class="ramp">% = done that day · ✓ = all done</span></div>
   <div class="hm-detail" id="hm-detail">${hmDetail(list,now,t0)}</div>`;
-  return h;
 }
 /* Every open task with a due date falls under one colour:
    Red = overdue · Amber = still due today, or coming up and at risk (Important, or on a day with 3+ tasks) · Green = the rest */
@@ -561,6 +549,7 @@ function reviewHTML(list,now,t0){
   return `<div class="rv">
     <div class="rv-head"><h5><span class="rag-tag ${k}">${RAGW[k]}</span> Reviewing ${i+1} of ${arr.length}</h5><button class="btn sm" data-rv="close">Close</button></div>
     <p class="rv-sub">${RAGSUB[k]}</p>
+    ${catChips(arr)}
     <div class="rv-bar ${k}"><span style="width:${total?cleared/total*100:0}%"></span></div>
     <div class="rv-list">${arr.map(row).join("")}</div></div>`;
 }
@@ -592,13 +581,16 @@ function redrawReview(scroll){
 }
 function hmDetail(list,now,t0){
   if(hmReview)return reviewHTML(list,now,t0);
-  if(!hmSel)return `<div style="font-size:.8rem;color:var(--muted)">Or tap a square to see that day's tasks.</div>`;
-  const {cat,s}=hmSel;
-  const day=list.filter(t=>(cat==="All"||t.cat===cat)&&t.due>=s&&t.due<s+DAY).sort((a,b)=>a.due-b.due);
+  if(!hmSel)return "";
+  const {s:ds}=hmSel;
+  const day=list.filter(t=>t.due>=ds&&t.due<ds+DAY).sort((a,b)=>a.due-b.due);
   if(!day.length)return "";
-  const st=cellStatus(day,s,now,t0);
-  return `<h5><span class="rag-tag ${st}">${RAGW[st]}</span>${esc(cat==="All"?"All tasks":cat)} · ${esc(new Date(s).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"}))}</h5>
-   <div class="list">${day.map(t=>{const late=!t.done&&t.due<now;return `<div class="row${t.done?" done":""}" style="--cc:${cc(t.cat)}"><span class="tick" style="${late?"border-color:var(--danger)":""}"></span><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="cat">${esc(t.cat)}</span>${t.pri?'<span class="flag">● Important</span>':""}</div></div><span class="mono" style="color:${late?"var(--danger)":"var(--muted)"}">${esc(t.done?"Done":fmtDue(t.due))}</span></div>`}).join("")}</div>`;
+  const st=cellStatus(day,ds,now,t0),doneN=day.filter(t=>t.done).length;
+  const groups={};day.forEach(t=>{(groups[t.cat]=groups[t.cat]||[]).push(t)});
+  const names=Object.keys(groups).sort((x,y)=>groups[y].length-groups[x].length||x.localeCompare(y));
+  const rowH=t=>{const late=!t.done&&t.due<now;return `<div class="row${t.done?" done":""}" style="--cc:${cc(t.cat)}"><span class="tick" style="${late?"border-color:var(--danger)":""}"></span><div class="body"><div class="t">${esc(t.title)}</div>${t.pri?'<div class="meta"><span class="flag">● Important</span></div>':""}</div><span class="mono" style="color:${late?"var(--danger)":"var(--muted)"}">${esc(t.done?"Done":fmtDue(t.due))}</span></div>`};
+  return `<div class="rv"><div class="rv-head"><h5><span class="rag-tag ${st}">${RAGW[st]}</span>${esc(new Date(ds).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"}))}</h5><span class="mono" style="color:var(--muted)">${doneN} of ${day.length} done · ${Math.round(doneN/day.length*100)}%</span></div>
+   ${names.map(c=>{const g=groups[c],d=g.filter(t=>t.done).length;return `<div class="cat-grp"><div class="cat-lbl" style="--cc:${cc(c)}"><i></i>${esc(c)}<span class="mono">${d}/${g.length}</span></div><div class="list">${g.map(rowH).join("")}</div></div>`}).join("")}</div>`;
 }
 
 function chart14(days){

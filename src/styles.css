@@ -478,3 +478,28 @@ button.rag-pill:active{transform:scale(.96)}
 .hm-h.now span{font-size:.58rem;padding:1px 3px}
 .hm-lbl,.hm>span:first-child{box-shadow:0 -4px 0 var(--surface),0 4px 0 var(--surface)}
 .hm-cell{font-family:var(--f-body)}
+
+/* ---- heatmap as a day strip (one square per day, solid RAG colour, % done) ---- */
+.hm.strip{display:grid;grid-template-columns:1fr;gap:12px;min-width:0}
+@media (min-width:760px){.hm.strip{grid-template-columns:1fr 1fr;gap:18px}}
+.strip-grp{min-width:0}
+.strip-lbl{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.strip-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.strip .hm-cell{aspect-ratio:auto;min-height:64px;border-radius:10px;padding:6px 2px;display:grid;gap:1px;place-items:center;align-content:center;font-family:var(--f-body);color:var(--muted);cursor:pointer}
+.strip .hm-cell.n{cursor:default}
+.strip .hm-cell.r{color:var(--surface)}.strip .hm-cell.a{color:var(--accent-ink)}.strip .hm-cell.g{color:var(--surface)}
+.strip .hm-cell>*{position:relative;z-index:1}
+.strip .dw{font-size:.62rem;font-weight:600;opacity:.85;line-height:1.1}
+.strip .dn{font-size:.72rem;font-weight:600;opacity:.85;line-height:1.1}
+.strip .dp{font-family:var(--f-display);font-size:1rem;font-weight:800;line-height:1.15;font-variant-numeric:tabular-nums}
+.strip .hm-cell.today{box-shadow:0 0 0 2px var(--ink)}
+.strip .hm-cell.today .dw{font-weight:800;opacity:1}
+.strip .hm-cell:not(.n):hover{transform:translateY(-2px) scale(1.04)}
+.strip .hm-cell.sel{box-shadow:0 0 0 3px var(--ink);transform:translateY(-3px) scale(1.06)}
+.cat-counts{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.cat-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:.76rem;font-weight:600;color:var(--cc);background:var(--bg)}
+.cat-chip i,.cat-lbl i{width:8px;height:8px;border-radius:50%;background:var(--cc);flex:none}
+.cat-chip b{color:var(--muted);font-weight:500}
+.cat-grp{margin-top:10px}
+.cat-lbl{display:flex;align-items:center;gap:7px;font-size:.8rem;font-weight:700;color:var(--cc);margin:0 0 5px 2px}
+.cat-lbl .mono{color:var(--muted);font-weight:500;margin-left:auto}
