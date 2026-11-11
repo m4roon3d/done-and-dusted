@@ -541,16 +541,14 @@ function renderDash(list,now,t0){
     const up=e.target.closest("[data-tmup]"),go=e.target.closest("[data-tmgo]"),tk=e.target.closest("[data-tid]"),b=e.target.closest("[data-tcat]");
     if(up){tmCat=null;animIn=true;haptic();render();return}
     if(go){filter=go.dataset.tmgo;haptic();setView("tasks");return}
-    if(tk){ // open that task's editor in the Tasks view
-      const id=tk.dataset.tid;filter=tmCat||"All";openEdit=id;haptic();setView("tasks");
-      setTimeout(()=>document.querySelector(`.row[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({block:"center",behavior:"smooth"}),300);return}
+    if(tk){tmTask=tk.dataset.tid;hmSel=null;haptic();openDayPop();return} // same pop-up as a heatmap day
     if(b){tmCat=b.dataset.tcat;animIn=true;haptic();render()}
   });
   const hm=el.querySelector(".hm");
   if(hm)hm.addEventListener("click",e=>{
     const b=e.target.closest(".hm-cell");if(!b||b.classList.contains("n"))return;
     const pick={cat:b.dataset.c,s:+b.dataset.s};
-    hmSel=pick;
+    hmSel=pick;tmTask=null;
     hm.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
     b.classList.add("sel");haptic();
     openDayPop();
@@ -685,6 +683,7 @@ function renderPlan(list,now,t0){
    today     : open & past its time = Red, open later today = Amber, all done = Green
    upcoming  : 3+ tasks or any Important = Amber (heavy / at risk), otherwise Green
    category  : Red if anything overdue, Amber if something due within 48 h, otherwise Green */
+let tmTask=null; // task id shown in the pop-up after tapping a task tile
 let tmCat=null; // task map drill-down: the category being shown task by task, or null for all categories
 let hmSel=null,hmReview=null; // hmReview: {color:"r"|"a"|"g", idx, total}
 const RAGW={r:"Red",a:"Amber",g:"Green"};
@@ -795,7 +794,7 @@ function taskTreemapHTML(list,now,t0,cat){
       <button class="btn" data-tmgo="${esc(cat)}">Open list</button></div>
     <div class="tmap" role="group" aria-label="${esc(cat)} tasks" style="height:${px}px">${tiles}</div>
     <div class="hm-legend"><span><i style="background:var(--danger)"></i>Overdue ${n.r}</span><span><i style="background:var(--amber)"></i>Due today or at risk ${n.a}</span><span><i style="background:var(--ok)"></i>On track or done ${n.g}</span></div>
-    <p class="rag-hint" style="margin:8px 0 0">Bigger tiles need you sooner: overdue, then due today, then Important. Tap a task to edit it.</p></div>`;
+    <p class="rag-hint" style="margin:8px 0 0">Bigger tiles need you sooner: overdue, then due today, then Important. Tap a task to see it and act on it.</p></div>`;
 }
 /* One colour per task: Green = done, or open and on track · Amber = open and due today, Important, or on a day
    with 3+ open tasks · Red = open and past its time. A day's square is split by how many tasks are in each. */
@@ -903,12 +902,16 @@ function openDayPop(){
 }
 function closeDayPop(){
   const pop=$("#pop");if(pop.hidden)return;
-  const back=hmSel&&document.querySelector(`.hm-cell[data-s="${hmSel.s}"]`);
-  hmSel=null;document.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
+  const back=hmSel?document.querySelector(`.hm-cell[data-s="${hmSel.s}"]`):tmTask?document.querySelector(`.task-tile[data-tid="${CSS.escape(tmTask)}"]`):null;
+  hmSel=null;tmTask=null;document.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
   pop.classList.remove("open");setTimeout(()=>{pop.hidden=true},250);
   back&&back.focus();
 }
 function drawDayPop(){ // returns false when the day has nothing to show
+  if(tmTask){
+    const t=view().find(x=>x.id===tmTask);if(!t){closeDayPop();return false}
+    $("#popTitle").textContent=t.cat+" task";$("#popBody").innerHTML=taskPopHTML(t);return true;
+  }
   if(!hmSel)return false;
   const now=Date.now(),t0=sod(now).getTime(),html=dayHTML(view(),now,t0);
   if(!html){closeDayPop();return false}
@@ -919,6 +922,18 @@ function drawDayPop(){ // returns false when the day has nothing to show
 $("#popClose").onclick=closeDayPop;
 $("#pop").addEventListener("click",e=>{
   if(e.target.id==="pop"){closeDayPop();return}
+  const tp=e.target.closest("[data-tp]");
+  if(tp){
+    const t=view().find(x=>x.id===tmTask);if(!t)return;
+    const act=tp.dataset.tp,now=Date.now(),t0=sod(now).getTime();
+    if(act==="edit"){const id=t.id;closeDayPop();filter=t.cat;openEdit=id;haptic();setView("tasks");
+      setTimeout(()=>document.querySelector(`.row[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({block:"center",behavior:"smooth"}),300);return}
+    if(act==="undo"){save({...t,done:false,doneAt:null});haptic();return}
+    if(act==="done"){const r=tp.getBoundingClientRect();burst(r.left+r.width/2,r.top+r.height/2,18,[tok(catVar(t.cat)),tok("--accent")],.8);dustBrand();haptic("success");
+      save({...t,done:true,doneAt:now});toast({t:"Dusted ✓",s:t.title,ttl:2500,undo:()=>save({...t})});return}
+    const next=act==="hour"?{...t,due:now+3600e3,reminded:false}:placeOn(t,t0+(act==="week"?7:1)*DAY,now);
+    haptic();save(next);toast({t:"Moved to "+fmtDue(next.due),s:t.title,ttl:2500,undo:()=>save({...t})});return;
+  }
   const tk=e.target.closest("button.tick");if(!tk)return;
   const t=view().find(x=>x.id===tk.dataset.id);if(!t)return;
   if(t.done){save({...t,done:false,doneAt:null});return}
@@ -926,6 +941,17 @@ $("#pop").addEventListener("click",e=>{
   save({...t,done:true,doneAt:Date.now()});
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#pop").hidden)closeDayPop()});
+function taskPopHTML(t){ // pop-up for one task, opened from the task map
+  const now=Date.now(),t0=sod(now).getTime(),k=taskColours(view(),now,t0)(t),late=!t.done&&t.due&&t.due<now;
+  const when=t.done?"Done":t.due?fmtDue(t.due):"No date";
+  return `<div class="rv"><div class="row rag-${k}${t.done?" done":""}" style="--cc:${cc(t.cat)};grid-template-columns:1fr auto"><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="cat">${esc(t.cat)}</span><span class="rag-tag ${k}">${RAGW[k]}</span>${t.pri?'<span class="flag">● Important</span>':""}${t.rep?'<span>↻ Repeats</span>':""}</div></div>
+      <span class="mono" style="color:${late?"var(--danger)":"var(--muted)"}">${esc(when)}</span></div>
+    ${t.note?`<p class="rv-sub" style="overflow-wrap:anywhere;white-space:pre-wrap">${esc(String(t.note))}</p>`:""}
+    <p class="rv-sub">${t.done?"Dusted. Tap Not done to bring it back.":t.due?RAGSUB[k]:"No date yet. Give it a day, or edit it."}</p>
+    <div class="rv-acts">${t.done?`<button class="btn" data-tp="undo">Not done</button>`
+      :`<button class="btn pri" data-tp="done">Done ✓</button>${late||(t.due&&t.due<t0+DAY)?`<button class="btn" data-tp="hour">+1 hour</button>`:""}<button class="btn" data-tp="tomorrow">Tomorrow</button><button class="btn" data-tp="week">Next week</button>`}
+      <button class="btn" data-tp="edit">Edit</button></div></div>`;
+}
 function dayHTML(list,now,t0){
   if(!hmSel)return "";
   const {s:ds}=hmSel;
