@@ -399,6 +399,7 @@ function renderDash(list,now,t0){
     <div class="tile ${overdue.length?"bad":""}" style="--d:2"><div class="k">Overdue</div><div class="v" data-n="${overdue.length}">${overdue.length}</div><div class="s">${overdue.length?"oldest "+fmtDue(Math.min(...overdue.map(t=>t.due))):"all clear"}</div></div>
     <div class="tile" style="--d:3"><div class="k">Done · 7 days</div><div class="v" data-n="${weekDone}">${weekDone}</div><div class="s">${streak} day streak${streak>=3?" 🔥":""}</div></div>
   </div>
+  <div class="panel" style="--d:4"><h4>Task map <small>${tmCat?"tasks in one category":"tap a category"}</small></h4>${treemapHTML(list,now,t0)}</div>
   <div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day</small></h4>${heatmapHTML(list,now,t0)}</div>
   <div class="two">
     <div class="panel ring" style="--d:4"><svg viewBox="0 0 150 150" role="img" aria-label="Today ${Math.round(pct*100)} percent complete">
@@ -419,6 +420,11 @@ function renderDash(list,now,t0){
   el.classList.toggle("dash-in",animIn);
   el.innerHTML=h;
   if(animIn)el.querySelectorAll("[data-n]").forEach(n=>countUp(n,+n.dataset.n));
+  const tw=el.querySelector(".tm-wrap");
+  if(tw)tw.addEventListener("click",e=>{
+    const b=e.target.closest("[data-tcat]");if(!b)return;
+    tmCat=b.dataset.tcat||null;haptic();render();
+  });
   const hm=el.querySelector(".hm");
   if(hm)hm.addEventListener("click",e=>{
     const b=e.target.closest(".hm-cell");if(!b||b.classList.contains("n"))return;
@@ -577,6 +583,60 @@ function catStatus(arr,now){
 function catChips(arr){ // "Work 3 · Home 2" as small labelled chips
   const m={};arr.forEach(t=>{m[t.cat]=(m[t.cat]||0)+1});
   return `<div class="cat-counts">${Object.keys(m).sort((x,y)=>m[y]-m[x]||x.localeCompare(y)).map(c=>`<span class="cat-chip" style="--cc:${cc(c)}"><i></i>${esc(c)} <b class="mono">${m[c]}</b></span>`).join("")}</div>`;
+}
+/* Task map: a treemap above the heat map. Tile size = number of tasks. Tap a category to open its tasks. Red / amber / green only.
+   Category colour: red if over a quarter of its open tasks are overdue · amber if any are overdue or at risk · green otherwise.
+   Task colour: red overdue · amber due today or at risk · green on track or done. */
+let tmCat=null;
+function squarify(items,W,H){ // squarified treemap: items [{v}] -> same items with x,y,w,h in a W x H box
+  const total=items.reduce((s,i)=>s+i.v,0)||1;
+  const sorted=items.map((it,i)=>({i,a:it.v/total*W*H})).sort((p,q)=>q.a-p.a);
+  const out=new Array(items.length),rect={x:0,y:0,w:W,h:H};
+  const sum=r=>r.reduce((s,e)=>s+e.a,0);
+  const worst=(r,s)=>{const A=sum(r),mx=Math.max(...r.map(e=>e.a)),mn=Math.min(...r.map(e=>e.a));return Math.max(s*s*mx/(A*A),A*A/(s*s*mn))};
+  const place=r=>{
+    const A=sum(r);
+    if(rect.w>=rect.h){const cw=A/rect.h;let y=rect.y;for(const e of r){const h=e.a/cw;out[e.i]={...items[e.i],x:rect.x,y,w:cw,h};y+=h}rect.x+=cw;rect.w-=cw}
+    else{const rh=A/rect.w;let x=rect.x;for(const e of r){const w=e.a/rh;out[e.i]={...items[e.i],x,y:rect.y,w,h:rh};x+=w}rect.y+=rh;rect.h-=rh}
+  };
+  let row=[];
+  while(sorted.length){
+    const s=Math.min(rect.w,rect.h),c=sorted[0];
+    if(!row.length||worst([...row,c],s)<=worst(row,s)){row.push(c);sorted.shift()}
+    else{place(row);row=[]}
+  }
+  if(row.length)place(row);
+  return out;
+}
+function treemapHTML(list,now,t0){
+  if(!list.length)return `<p class="rag-hint">Add tasks to see your task map.</p>`;
+  if(tmCat&&!list.some(t=>t.cat===tmCat))tmCat=null;
+  const W=1000,H=600;let items,head="";
+  if(tmCat){
+    const arr=list.filter(t=>t.cat===tmCat),rg=ragTasks(arr,now,t0),key={};
+    rg.r.forEach(t=>key[t.id]="r");rg.a.forEach(t=>key[t.id]="a");
+    const dn=arr.filter(t=>t.done).length,od=rg.r.length;
+    head=`<div class="tm-head"><button class="btn sm" data-tcat="">← All tasks</button><span class="mono">${esc(tmCat)} · ${arr.length} tasks · ${Math.round(dn/arr.length*100)}% done · ${od} overdue</span></div>`;
+    items=arr.map(t=>({v:1,k:t.done?"g":key[t.id]||"g",name:t.title,sub:t.done?"Done":t.due?(t.due<now?"Overdue · ":"")+fmtDue(t.due):"No date"}));
+  }else{
+    const m={};list.forEach(t=>{(m[t.cat]=m[t.cat]||[]).push(t)});
+    items=Object.keys(m).map(c=>{
+      const arr=m[c],open=arr.filter(t=>!t.done),rg=ragTasks(arr,now,t0),od=rg.r.length,pct=Math.round((arr.length-open.length)/arr.length*100);
+      const k=!open.length?"g":(od&&od/open.length>.25)?"r":(od||rg.a.length)?"a":"g";
+      return {v:arr.length,k,cat:c,name:c,sub:`${pct}% done`,sub2:od?`${od} overdue`:`${arr.length} task${arr.length>1?"s":""}`};
+    }).sort((a,b)=>b.v-a.v||a.name.localeCompare(b.name));
+  }
+  const tiles=squarify(items,W,H).map((b,i)=>{
+    const small=b.w<170||b.h<100,label=`${b.name}: ${b.sub}${b.sub2?", "+b.sub2:""}`,
+      style=`left:${(b.x/W*100).toFixed(2)}%;top:${(b.y/H*100).toFixed(2)}%;width:${(b.w/W*100).toFixed(2)}%;height:${(b.h/H*100).toFixed(2)}%;--i:${Math.min(i,20)}`,
+      inner=`<span class="nm">${esc(b.name)}</span>${small?"":`<span class="sb">${esc(b.sub)}${b.sub2?"<br>"+esc(b.sub2):""}</span>`}`;
+    return b.cat
+      ?`<button class="tmap-tile ${b.k}" style="${style}" data-tcat="${esc(b.cat)}" aria-label="${esc(label)}" title="${esc(label)}">${inner}</button>`
+      :`<div class="tmap-tile ${b.k}${b.k==="g"&&b.sub==="Done"?" done":""}" style="${style}" role="img" aria-label="${esc(label)}" title="${esc(label)}">${inner}</div>`;
+  }).join("");
+  return `<div class="tm-wrap">${head}<div class="tmap" role="group" aria-label="${tmCat?"Tasks in "+esc(tmCat):"Categories"}">${tiles}</div>
+    <div class="hm-legend"><span><i style="background:var(--danger)"></i>Red · overdue</span><span><i style="background:var(--amber)"></i>Amber · due today or at risk</span><span><i style="background:var(--ok)"></i>Green · on track or done</span></div>
+    <p class="rag-hint" style="margin:8px 0 0">${tmCat?"Tile size is the same for every task. Tap ← All tasks to go back.":"Tile size is the number of tasks. Tap a category to see its tasks."}</p></div>`;
 }
 /* One colour per task: Green = done, or open and on track · Amber = open and due today, Important, or on a day
    with 3+ open tasks · Red = open and past its time. A day's square is split by how many tasks are in each. */
