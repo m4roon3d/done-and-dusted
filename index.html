@@ -13,8 +13,120 @@
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icons/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="./icons/icon-180.png">
+<script>/* doodle splash: once per app launch (tab session); ?nosplash skips it.
+   In the native app it waits for the app to say go (src/main.js), so it isn't hidden behind the launch screen. */
+try{var dd=document.documentElement;if(sessionStorage.getItem("dd.splashed")||/[?&]nosplash/.test(location.search))dd.classList.add("no-splash");sessionStorage.setItem("dd.splashed","1");
+if(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()){dd.classList.add("sp-wait");setTimeout(function(){dd.classList.remove("sp-wait")},4000)}}catch(e){}</script>
+<style>
+/* "Alarm bonk": an alarm clock rings itself silly, Dusty bonks it, it pops into three ticks, then the wordmark.
+   Inline so it paints before the app bundle loads. Colours follow the active look, falling back to Marigold. */
+#splash{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
+  background:var(--bg,#EEF1F4);padding:env(safe-area-inset-top,0px) 16px env(safe-area-inset-bottom,0px);
+  animation:sp-out .4s ease-in 2.85s forwards;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.no-splash #splash{display:none}
+#splash.bye{animation:sp-out .3s ease-in forwards}
+.sp-wait #splash,.sp-wait #splash *{animation-play-state:paused!important}
+#splash svg{width:min(84vw,360px);height:auto;max-height:92vh;overflow:visible}
+#splash .k{stroke:var(--ink,#16202B);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+#splash .paper{fill:var(--surface,#fff)}
+#splash .body{fill:var(--accent,#E39A14)}
+#splash .eye{fill:#fff}
+#splash .pupil,#splash .ink{fill:var(--ink,#16202B)}
+#splash .blush{fill:#F59AB0;opacity:.75}
+#splash .stick{stroke:#9A6230;stroke-width:5;stroke-linecap:round}
+#splash .chk{fill:none;stroke:var(--accent,#E39A14);stroke-width:7;stroke-linecap:round;stroke-linejoin:round}
+#splash .hand{font-family:"Gochi Hand","Comic Sans MS","Chalkboard SE",cursive;fill:var(--ink,#16202B)}
+#splash .wmk{font:800 34px var(--f-display,system-ui);letter-spacing:-1.2px;fill:var(--ink,#16202B)}
+#splash .amp{fill:var(--accent,#E39A14)}
+#splash .tag{font:800 10.5px var(--f-body,system-ui);letter-spacing:2.4px;fill:var(--muted,#5A6878)}
+#splash .fb{transform-box:fill-box}
+#splash .spark{fill:var(--accent,#E39A14);opacity:0;transform-box:fill-box;transform-origin:center;animation:sp-twinkle 1.4s ease-in-out infinite}
+#splash .wm{transform-box:fill-box;transform-origin:center;opacity:0;animation:sp-pop .5s cubic-bezier(.3,1.6,.5,1) 1.8s forwards}
+#splash .tg{opacity:0;animation:sp-fade .4s ease-out 2.05s forwards}
+#splash .pop{transform-origin:center;animation:sp-clockpop .35s ease-in 1.2s forwards}
+#splash .shake{transform-origin:50% 100%;animation:sp-shake .08s linear .3s 10 alternate}
+#splash .ringing{opacity:0;animation:sp-flash .16s steps(1) .3s 5}
+#splash .dusty{transform-origin:50% 100%;animation:sp-hop .5s cubic-bezier(.3,1.3,.5,1) .45s both}
+#splash .duster{transform-origin:0% 100%;animation:sp-bonk .55s cubic-bezier(.5,0,.3,1.4) .55s both}
+#splash .bonk{transform-origin:center;opacity:0;animation:sp-bonkpop .6s ease-out 1.05s}
+#splash .chk{transform-origin:center;opacity:0;animation:sp-fly .45s cubic-bezier(.3,1.4,.5,1) both}
+#splash .conf{transform-origin:center;opacity:0;animation:sp-conf .7s ease-out 1.22s forwards}
+@keyframes sp-out{to{opacity:0;visibility:hidden;pointer-events:none}}
+@keyframes sp-twinkle{0%,100%{opacity:0;transform:scale(.3)}50%{opacity:.9;transform:scale(1)}}
+@keyframes sp-pop{from{opacity:0;transform:scale(.6) translateY(10px)}to{opacity:1;transform:none}}
+@keyframes sp-fade{to{opacity:1}}
+@keyframes sp-hop{0%{transform:translate(-170px,0)}35%{transform:translate(-95px,-40px)}60%{transform:translate(-40px,0) scale(1.1,.88)}80%{transform:translate(-8px,-18px)}100%{transform:none}}
+@keyframes sp-shake{0%{transform:rotate(-9deg)}100%{transform:rotate(9deg) translateY(-3px)}}
+@keyframes sp-flash{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes sp-clockpop{0%{transform:none;opacity:1}45%{transform:scale(1.22);opacity:1}100%{transform:scale(0);opacity:0}}
+@keyframes sp-bonk{0%{transform:rotate(0)}70%{transform:rotate(-70deg)}88%{transform:rotate(28deg)}100%{transform:rotate(8deg)}}
+@keyframes sp-bonkpop{0%{opacity:0;transform:scale(.2)}25%{opacity:1;transform:scale(1.2)}75%{opacity:1;transform:scale(1)}100%{opacity:0}}
+@keyframes sp-fly{from{opacity:0;transform:translate(var(--fx),var(--fy)) scale(.2) rotate(-120deg)}to{opacity:1;transform:none}}
+@keyframes sp-conf{0%{opacity:1;transform:none}100%{opacity:0;transform:translate(var(--x),var(--y)) rotate(220deg)}}
+@media (prefers-reduced-motion:reduce){
+  #splash{animation:sp-out .3s ease-in 1.2s forwards}
+  #splash *{animation-delay:-30s!important} /* show the finished frame */
+}
+</style>
 </head>
 <body>
+<div id="splash" aria-hidden="true">
+  <svg viewBox="0 0 320 400">
+    <defs>
+      <!-- "boiling" hand-drawn wobble: the noise seed flips a few times a second -->
+      <filter id="sk" x="-10%" y="-10%" width="120%" height="120%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="1"><animate attributeName="seed" values="1;4;7;2" dur=".45s" repeatCount="indefinite" calcMode="discrete"/></feTurbulence>
+        <feDisplacementMap in="SourceGraphic" scale="3.2"/>
+      </filter>
+    </defs>
+    <g filter="url(#sk)">
+      <path class="spark" d="M290 40l3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/>
+      <path class="spark" style="animation-delay:.6s" d="M26 60l2.5 6 6 2.5-6 2.5-2.5 6-2.5-6-6-2.5 6-2.5z"/>
+      <!-- the alarm clock -->
+      <g transform="translate(184 170)"><g class="fb pop"><g class="fb shake">
+        <g class="ringing"><path class="k" fill="none" d="M-62 -58q-8 10 0 22M-72 -64q-12 16 0 34M62 -58q8 10 0 22M72 -64q12 16 0 34"/></g>
+        <line class="k" x1="-26" y1="38" x2="-36" y2="58"/><line class="k" x1="26" y1="38" x2="36" y2="58"/>
+        <ellipse class="ink" cx="-40" cy="59" rx="8" ry="4"/><ellipse class="ink" cx="40" cy="59" rx="8" ry="4"/>
+        <circle class="body k" cx="-30" cy="-44" r="14"/><circle class="body k" cx="30" cy="-44" r="14"/>
+        <line class="k" x1="0" y1="-46" x2="0" y2="-58"/><circle class="ink" cx="0" cy="-60" r="4"/>
+        <circle class="paper k" cx="0" cy="0" r="46"/>
+        <path class="k" d="M0 -40v6M40 0h-6M0 40v-6M-40 0h6"/>
+        <line class="k" x1="0" y1="0" x2="0" y2="-26"/><line class="k" x1="0" y1="0" x2="17" y2="9"/><circle class="ink" cx="0" cy="0" r="3.5"/>
+        <circle class="eye k" cx="-17" cy="16" r="6"/><circle class="eye k" cx="17" cy="16" r="6"/><circle class="pupil" cx="-17" cy="16" r="2.6"/><circle class="pupil" cx="17" cy="16" r="2.6"/>
+        <ellipse class="ink" cx="0" cy="30" rx="4" ry="5"/>
+      </g></g></g>
+      <!-- BONK -->
+      <g class="fb bonk"><path class="k" d="M146 136l6 12 13 2-9 9 2 13-12-6-12 6 2-13-9-9 13-2z" fill="#F7D774"/></g>
+      <g class="fb bonk"><text class="hand" x="92" y="120" font-size="28" transform="rotate(-10 92 120)">BONK!</text></g>
+      <!-- confetti and the three ticks the clock pops into -->
+      <circle class="fb conf" cx="184" cy="170" r="5" fill="#F59AB0" style="--x:-70px;--y:-60px"/><circle class="fb conf" cx="184" cy="170" r="5" fill="#8EDBEA" style="--x:70px;--y:-70px"/>
+      <circle class="fb conf" cx="184" cy="170" r="5" fill="#B9A5FF" style="--x:90px;--y:10px"/><circle class="fb conf" cx="184" cy="170" r="5" fill="#F7D774" style="--x:-10px;--y:-95px"/>
+      <rect class="fb conf" x="180" y="166" width="8" height="8" rx="2" fill="#E39A14" style="--x:50px;--y:70px"/><rect class="fb conf" x="180" y="166" width="8" height="8" rx="2" fill="#8EDBEA" style="--x:-90px;--y:20px"/>
+      <path class="fb chk" style="animation-delay:1.3s;--fx:69px;--fy:-118px" d="M101 288l9 10l19-24"/>
+      <path class="fb chk" style="animation-delay:1.42s;--fx:24px;--fy:-108px" d="M146 278l9 10l19-24"/>
+      <path class="fb chk" style="animation-delay:1.54s;--fx:-21px;--fy:-118px" d="M191 288l9 10l19-24"/>
+      <!-- Dusty -->
+      <g transform="translate(18 196)"><g class="fb dusty">
+        <line class="k" x1="20" y1="76" x2="15" y2="98"/><line class="k" x1="54" y1="76" x2="59" y2="98"/>
+        <ellipse class="ink" cx="12" cy="99" rx="8" ry="4"/><ellipse class="ink" cx="62" cy="99" rx="8" ry="4"/>
+        <rect class="body k" x="0" y="0" width="76" height="78" rx="28"/>
+        <g transform="translate(80 34)"><g class="fb duster">
+          <line class="stick" x1="0" y1="0" x2="30" y2="-46"/>
+          <circle class="k" cx="48" cy="-56" r="10" fill="#8EDBEA"/><circle class="k" cx="28" cy="-60" r="10" fill="#B9A5FF"/><circle class="k" cx="44" cy="-73" r="10" fill="#F7D774"/><circle class="k" cx="36" cy="-62" r="11" fill="#F59AB0"/>
+        </g></g>
+        <line class="k" x1="72" y1="44" x2="84" y2="33"/>
+        <circle class="eye k" cx="24" cy="30" r="11"/><circle class="eye k" cx="52" cy="30" r="11"/>
+        <circle class="pupil" cx="27" cy="30" r="4.5"/><circle class="pupil" cx="55" cy="30" r="4.5"/>
+        <path class="k" d="M14 14q8 -6 16 -1M46 13q8 -5 16 1" fill="none"/>
+        <ellipse class="blush" cx="13" cy="50" rx="7" ry="4"/><ellipse class="blush" cx="63" cy="50" rx="7" ry="4"/>
+        <path class="k" d="M26 50q12 16 24 0z" fill="var(--ink,#16202B)"/>
+      </g></g>
+    </g>
+    <text class="wmk wm" x="160" y="352" text-anchor="middle">Done <tspan class="amp">&amp;</tspan> Dusted</text>
+    <text class="tag tg" x="160" y="378" text-anchor="middle">PLAN IT · DO IT · <tspan class="amp">DUST IT</tspan></text>
+  </svg>
+</div>
+<script>window.__ddSplashT0=performance.now()</script>
 <div class="wrap">
   <header>
     <div>

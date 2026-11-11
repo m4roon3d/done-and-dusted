@@ -12,12 +12,14 @@ import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/fredoka";
 import "@fontsource-variable/outfit";
 import "@fontsource-variable/karla";
+import "@fontsource/gochi-hand/400.css"; // the splash's hand-written "A-CHOO!"
 import "./styles.css";
 import { applyLook, onSystemThemeChange } from "./theme.js";
 applyLook(); // before anything draws
 import JSZip from "jszip";
 import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
+import { playSplashSound } from "./splash-sound.js";
 import { pref, setPref } from "./prefs.js";
 import { loadAll, putTask, putTasks, deleteTask, clearTasks, migrateFromLocalStorage, requestPersist } from "./store.js";
 import { isNative, saveFile, haptic, initNativeShell, onResume } from "./platform.js";
@@ -26,6 +28,24 @@ import { remindersPanelHTML, wireRemindersPanel, openSheet, closeSheet, initShee
 
 
 const $=s=>document.querySelector(s);
+/* doodle splash (markup and timing live in index.html): tap to skip; removed once it has faded.
+   On the web it is already playing; in the native app it starts once the launch screen has gone. */
+let splashSound=null;
+function startSplash(){
+  const d=document.documentElement,sp=document.getElementById("splash");
+  if(!sp||d.classList.contains("no-splash"))return;
+  if(d.classList.contains("sp-wait")){d.classList.remove("sp-wait");window.__ddSplashT0=performance.now()}
+  if(pref("splashSound")&&!matchMedia("(prefers-reduced-motion: reduce)").matches)splashSound=playSplashSound(window.__ddSplashT0||performance.now());
+}
+{const sp=document.getElementById("splash");
+  if(sp){
+    if(document.documentElement.classList.contains("no-splash"))sp.remove();
+    else{
+      sp.addEventListener("click",()=>{sp.classList.add("bye");splashSound&&splashSound.stop()},{once:true});
+      sp.addEventListener("animationend",e=>{if(e.target===sp&&e.animationName==="sp-out")sp.remove()});
+      if(!isNative)startSplash();
+    }
+  }}
 /* ---------- storage (IndexedDB on this device) ---------- */
 let tasks=[],examples=false,loaded=false,persisted=null;
 function lsGet(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
@@ -1003,7 +1023,7 @@ initNotifications((action,id)=>{
   else if(action==="snooze")save({...t,due:Date.now()+3600e3});
   else{filter="All";alarms.set(t.id,Date.now()+6000);setView("tasks");setTimeout(()=>document.querySelector(`.row[data-id="${CSS.escape(t.id)}"]`)?.scrollIntoView({block:"center",behavior:"smooth"}),300)}
 }).then(()=>scheduleSync(view));
-initNativeShell({onBack:()=>{
+initNativeShell({onShown:startSplash,onBack:()=>{
   if(!$("#sheet").hidden){closeSheet();return true}
   if(!$("#pop").hidden){closeDayPop();return true}
   if(dict.open){closeDict();return true}

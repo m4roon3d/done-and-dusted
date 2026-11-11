@@ -1,6 +1,6 @@
 // Small on-device preferences shared across modules.
 const KEY = "dd.prefs";
-const DEFAULTS = { alerts: true, sound: true, look: "marigold", autoNight: false, dictLang: "en-IN" };
+const DEFAULTS = { alerts: true, sound: true, look: "marigold", autoNight: false, dictLang: "en-IN", splashSound: true };
 let cache = null;
 
 function load() {

@@ -50,10 +50,11 @@ export async function haptic(kind = "light") {
 }
 
 /* Native shell: status bar follows the theme, splash hides once drawn, Android back button behaves. */
-export async function initNativeShell({ onBack }) {
+export async function initNativeShell({ onBack, onShown }) {
   if (!isNative) return;
   try { await SystemBars.setStyle({ style: SystemBarsStyle.Default }); } catch {}
   try { const { SplashScreen } = await import("@capacitor/splash-screen"); await SplashScreen.hide({ fadeOutDuration: 250 }); } catch {}
+  onShown?.(); // the launch screen is gone: start the doodle splash
   try {
     const { App } = await import("@capacitor/app");
     App.addListener("backButton", () => { if (!onBack()) App.minimizeApp(); });

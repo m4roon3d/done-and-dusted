@@ -123,6 +123,7 @@ async function drawSheet() {
         <span class="sw3" style="background:${l.swatch[0]}"><i class="a" style="background:${l.swatch[1]}"></i><i class="b" style="background:${l.swatch[2]}"></i><i class="c" style="background:${l.swatch[2]}"></i></span>${esc(l.name)}</button>`).join("")}</div>
       ${pref("look") === "night" ? "" : switchHTML("swNight", pref("autoNight"), "Night Garden after dark", "Switch to the dark look when the phone is in dark mode")}
       ${pref("look") !== "night" && effectiveLook().id === "night" ? `<p>Showing Night Garden now because your phone is in dark mode.</p>` : ""}
+      ${switchHTML("swSplash", pref("splashSound"), "Opening music", "The little tune with the animation when the app opens")}
     </section>
     <section class="sset">
       <h3>Alerts</h3>
@@ -162,6 +163,7 @@ async function drawSheet() {
   document.querySelectorAll("[data-look-id]").forEach((btn) => { btn.onclick = () => changeLook(() => setLook(btn.dataset.lookId)); });
   if (b("swNight")) b("swNight").onchange = (e) => changeLook(() => setAutoNight(e.target.checked));
   b("swAlerts").onchange = (e) => setAlerts(e.target.checked);
+  b("swSplash").onchange = (e) => { setPref("splashSound", e.target.checked); haptic(); };
   if (b("swSound")) b("swSound").onchange = (e) => { setPref("sound", e.target.checked); haptic(); };
   if (b("sRemOn")) b("sRemOn").onclick = enableReminders;
   if (b("sExact")) b("sExact").onclick = async () => { exact = await openExactAlarmSetting(); drawSheet(); };
