@@ -8,4 +8,6 @@ ios/App/App/public/
 # signing keys never go in the repo
 *.jks
 *.keystore
+# ...except the shared test-build key (not a secret; never used for store releases)
+!android/app/debug.keystore
 keystore.properties

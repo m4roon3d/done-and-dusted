@@ -63,6 +63,8 @@ npm run android        # builds the web app, syncs it, opens Android Studio → 
 npm run android:apk    # or build android/app/build/outputs/apk/debug/app-debug.apk directly
 ```
 
+Test builds are signed with the shared key in `android/app/debug.keystore`, so each new APK installs over the previous one. The build number shows at the bottom of *Settings* in the app.
+
 **Play Store release:** in Android Studio use *Build → Generate Signed App Bundle*. Keep the keystore file safe and out of the repo; you need the same one for every update. Raise `versionCode` and `versionName` in `android/app/build.gradle` for each release.
 
 App ID: `app.doneanddusted` (set in `capacitor.config.json`). Change it before the first store release if you want a different one; it cannot change afterwards.

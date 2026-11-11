@@ -5,7 +5,7 @@ import { makeBackup, readBackup, restore, countTasks, isPersisted, requestPersis
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const VERSION = "1.0.0";
+const VERSION = "1.0 · build " + (typeof __APP_BUILD__ === "undefined" ? "dev" : __APP_BUILD__);
 let app = null;          // bridge into main.js
 let perm = "prompt", exact = "granted";
 let pendingRestore = null;
