@@ -340,7 +340,7 @@ function renderDash(list,now,t0){
     if(hmReview){hmReview=null;el.querySelectorAll(".rag-pill.on").forEach(x=>{x.classList.remove("on");x.setAttribute("aria-pressed","false")})}
     hm.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
     if(hmSel){b.classList.add("sel");const r=b.getBoundingClientRect();
-      const col=tok(b.classList.contains("r")?"--danger":b.classList.contains("a")?"--accent":"--ok");burst(r.left+r.width/2,r.top+r.height/2,10,[col,col,tok("--ink")],.5)}
+      const col=tok(b.classList.contains("s-r")?"--danger":b.classList.contains("s-a")?"--accent":"--ok");burst(r.left+r.width/2,r.top+r.height/2,10,[col,col,tok("--ink")],.5)}
     $("#hm-detail").innerHTML=hmDetail(view(),Date.now(),sod(Date.now()).getTime());
   });
   const rs=el.querySelector("#ragSum");
@@ -493,23 +493,32 @@ function catChips(arr){ // "Work 3 · Home 2" as small labelled chips
   const m={};arr.forEach(t=>{m[t.cat]=(m[t.cat]||0)+1});
   return `<div class="cat-counts">${Object.keys(m).sort((x,y)=>m[y]-m[x]||x.localeCompare(y)).map(c=>`<span class="cat-chip" style="--cc:${cc(c)}"><i></i>${esc(c)} <b class="mono">${m[c]}</b></span>`).join("")}</div>`;
 }
+/* One colour per task: Green = done, or open and on track · Amber = open and due today, Important, or on a day
+   with 3+ open tasks · Red = open and past its time. A day's square is split by how many tasks are in each. */
+function taskColours(list,now,t0){
+  const perDay={};list.forEach(t=>{if(!t.done&&t.due&&t.due>=now){const k=sod(t.due).getTime();perDay[k]=(perDay[k]||0)+1}});
+  return t=>t.done?"g":t.due<now?"r":(t.due<t0+DAY||t.pri||perDay[sod(t.due).getTime()]>=3)?"a":"g";
+}
 function heatmapHTML(list,now,t0){
-  const rg=ragTasks(list,now,t0);
+  const rg=ragTasks(list,now,t0),colour=taskColours(list,now,t0);
   const pill=(k,i,sub)=>`<button class="rag-pill ${k}${hmReview&&hmReview.color===k?" on":""}" data-rag="${k}" style="--d:${i}" aria-pressed="${!!(hmReview&&hmReview.color===k)}"><span class="dot"></span><b data-n="${rg[k].length}">${rg[k].length}</b><span class="pl">${RAGW[k]}<small>${sub}</small></span></button>`;
   const cell=(s,i)=>{
     const d=new Date(s),day=list.filter(t=>t.due>=s&&t.due<s+DAY),st=cellStatus(day,s,now,t0);
+    const n={r:0,a:0,g:0};day.forEach(t=>n[colour(t)]++);
     const pct=day.length?Math.round(day.filter(t=>t.done).length/day.length*100):0;
     const sel=hmSel&&hmSel.s===s;
-    const lbl=`${d.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"})}: ${day.length?day.length+" task"+(day.length>1?"s":"")+", "+pct+"% done, "+RAGW[st]:"nothing due"}`;
-    return `<button class="hm-cell ${st||"n"}${s===t0?" today":""}${sel?" sel":""}" style="--w:${i}" data-c="All" data-s="${s}" aria-label="${esc(lbl)}" title="${esc(lbl)}"${st?"":" tabindex=\"-1\""}>
-      <span class="dw">${s===t0?"Today":d.toLocaleDateString("en-IN",{weekday:"short"})}</span><span class="dn">${d.getDate()}</span><b class="dp">${!st?"–":pct===100?"✓":pct+"%"}</b></button>`;
+    const parts=["r","a","g"].filter(k=>n[k]).map(k=>`${n[k]} ${RAGW[k].toLowerCase()}`).join(", ");
+    const lbl=`${d.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"})}: ${day.length?day.length+" task"+(day.length>1?"s":"")+", "+pct+"% done ("+parts+")":"nothing due"}`;
+    return `<button class="hm-cell ${st?"s-"+st:"n"}${n.r?" has-r":""}${s===t0?" today":""}${sel?" sel":""}" style="--w:${i}" data-c="All" data-s="${s}" aria-label="${esc(lbl)}" title="${esc(lbl)}"${st?"":" tabindex=\"-1\""}>
+      <span class="hd"><span class="dw">${s===t0?"Today":d.toLocaleDateString("en-IN",{weekday:"short"})} ${d.getDate()}</span><b class="dp">${!st?"–":pct===100?"✓":pct+"%"}</b></span>
+      <span class="mix">${["r","a","g"].filter(k=>n[k]).map(k=>`<i class="${k}" style="flex:${n[k]}"></i>`).join("")}</span></button>`;
   };
   const row=(from,label,off)=>`<div class="strip-grp"><div class="strip-lbl">${label}</div><div class="strip-row">${[...Array(7)].map((_,i)=>cell(t0+(from+i)*DAY,off+i)).join("")}</div></div>`;
   return `<div class="rag-sum" id="ragSum">${pill("r",0,"overdue")}${pill("a",1,"due today or at risk")}${pill("g",2,"on track")}</div>
   <p class="rag-hint">Tap a colour to review its tasks one after another, or tap a day to see what's in it.</p>
   <div class="hm strip" role="group" aria-label="Status by day">${row(-7,"Last 7 days",0)}${row(0,"Today and the next 6 days",7)}</div>
-  <div class="hm-legend"><span><i style="background:var(--danger)"></i>Missed or overdue</span><span><i style="background:var(--accent)"></i>Due today or a heavy day</span><span><i style="background:var(--ok)"></i>Done or on track</span>
-    <span class="ramp">% = done that day · ✓ = all done</span></div>
+  <div class="hm-legend"><span><i style="background:var(--danger)"></i>Overdue</span><span><i style="background:var(--accent)"></i>Due today or at risk</span><span><i style="background:var(--ok)"></i>Done or on track</span>
+    <span style="flex-basis:100%">Each square is split by how many of that day's tasks are in each colour. The % is how much is done.</span></div>
   <div class="hm-detail" id="hm-detail">${hmDetail(list,now,t0)}</div>`;
 }
 /* Every open task with a due date falls under one colour:
@@ -585,11 +594,13 @@ function hmDetail(list,now,t0){
   const {s:ds}=hmSel;
   const day=list.filter(t=>t.due>=ds&&t.due<ds+DAY).sort((a,b)=>a.due-b.due);
   if(!day.length)return "";
-  const st=cellStatus(day,ds,now,t0),doneN=day.filter(t=>t.done).length;
+  const st=cellStatus(day,ds,now,t0),doneN=day.filter(t=>t.done).length,colour=taskColours(list,now,t0);
+  const n={r:0,a:0,g:0};day.forEach(t=>n[colour(t)]++);
   const groups={};day.forEach(t=>{(groups[t.cat]=groups[t.cat]||[]).push(t)});
   const names=Object.keys(groups).sort((x,y)=>groups[y].length-groups[x].length||x.localeCompare(y));
-  const rowH=t=>{const late=!t.done&&t.due<now;return `<div class="row${t.done?" done":""}" style="--cc:${cc(t.cat)}"><span class="tick" style="${late?"border-color:var(--danger)":""}"></span><div class="body"><div class="t">${esc(t.title)}</div>${t.pri?'<div class="meta"><span class="flag">● Important</span></div>':""}</div><span class="mono" style="color:${late?"var(--danger)":"var(--muted)"}">${esc(t.done?"Done":fmtDue(t.due))}</span></div>`};
-  return `<div class="rv"><div class="rv-head"><h5><span class="rag-tag ${st}">${RAGW[st]}</span>${esc(new Date(ds).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"}))}</h5><span class="mono" style="color:var(--muted)">${doneN} of ${day.length} done · ${Math.round(doneN/day.length*100)}%</span></div>
+  const rowH=t=>{const late=!t.done&&t.due<now;const k=colour(t);return `<div class="row rag-${k}${t.done?" done":""}" style="--cc:${cc(t.cat)}"><span class="tick" style="${late?"border-color:var(--danger)":""}"></span><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="rag-tag ${k}">${RAGW[k]}</span>${t.pri?'<span class="flag">● Important</span>':""}</div></div><span class="mono" style="color:${late?"var(--danger)":"var(--muted)"}">${esc(t.done?"Done":fmtDue(t.due))}</span></div>`};
+  return `<div class="rv"><div class="rv-head"><h5>${esc(new Date(ds).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"}))}</h5><span class="mono" style="color:var(--muted)">${doneN} of ${day.length} done · ${Math.round(doneN/day.length*100)}%</span></div>
+   <div class="mixline"><span class="mix">${["r","a","g"].filter(k=>n[k]).map(k=>`<i class="${k}" style="flex:${n[k]}"></i>`).join("")}</span><span class="mono">${["r","a","g"].filter(k=>n[k]).map(k=>`${n[k]} ${RAGW[k].toLowerCase()}`).join(" · ")}</span></div>
    ${names.map(c=>{const g=groups[c],d=g.filter(t=>t.done).length;return `<div class="cat-grp"><div class="cat-lbl" style="--cc:${cc(c)}"><i></i>${esc(c)}<span class="mono">${d}/${g.length}</span></div><div class="list">${g.map(rowH).join("")}</div></div>`}).join("")}</div>`;
 }
 

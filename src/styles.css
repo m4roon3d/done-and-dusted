@@ -503,3 +503,24 @@ button.rag-pill:active{transform:scale(.96)}
 .cat-grp{margin-top:10px}
 .cat-lbl{display:flex;align-items:center;gap:7px;font-size:.8rem;font-weight:700;color:var(--cc);margin:0 0 5px 2px}
 .cat-lbl .mono{color:var(--muted);font-weight:500;margin-left:auto}
+
+/* ---- day squares as a colour mix: header (day, % done) + block split red / amber / green by task ---- */
+.strip .hm-cell{background:var(--surface)!important;border:1px solid var(--line);color:var(--ink)!important;padding:0;overflow:hidden;display:flex;flex-direction:column;align-items:stretch;gap:0;min-height:76px}
+.strip .hm-cell.n{background:var(--sunk)!important;color:var(--muted)!important}
+.strip .hd{display:grid;place-items:center;padding:5px 1px 4px;gap:1px}
+.strip .dw{font-size:.6rem;font-weight:600;opacity:.8;white-space:nowrap}
+.strip .hm-cell.today .dw{opacity:1;font-weight:800}
+.strip .dp{font-size:.95rem}
+.mix{display:flex;flex:1;min-height:30px;width:100%;background:var(--sunk)}
+.mix i{display:block;min-width:3px}
+.mix .r{background:var(--danger)}.mix .a{background:var(--accent)}.mix .g{background:var(--ok)}
+.strip .hm-cell.has-r::after{animation:latering 2.4s ease-out infinite;animation-delay:var(--ph,0s)}
+.strip .hm-cell.today{box-shadow:0 0 0 2px var(--ink)}
+.dash-in .strip .mix i{transform-origin:left;animation:grow .7s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(.45s + var(--w,0) * 30ms)}
+.mixline{display:flex;align-items:center;gap:10px;margin:8px 0 2px;font-size:.74rem;color:var(--muted)}
+.mixline .mix{flex:1;min-height:8px;height:8px;border-radius:4px;overflow:hidden}
+.mixline .mono{flex:none}
+.hm-detail .row.rag-r{box-shadow:inset 4px 0 0 var(--danger)}
+.hm-detail .row.rag-a{box-shadow:inset 4px 0 0 var(--accent)}
+.hm-detail .row.rag-g{box-shadow:inset 4px 0 0 var(--ok)}
+.hm-detail .row .rag-tag{font-size:.66rem}
