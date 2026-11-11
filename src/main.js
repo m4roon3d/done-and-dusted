@@ -18,7 +18,7 @@ applyLook(); // before anything draws
 import JSZip from "jszip";
 import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
-import { pref } from "./prefs.js";
+import { pref, setPref } from "./prefs.js";
 import { loadAll, putTask, putTasks, deleteTask, migrateFromLocalStorage, requestPersist } from "./store.js";
 import { isNative, saveFile, haptic, initNativeShell, onResume } from "./platform.js";
 import { initNotifications, scheduleSync, webNotify } from "./notify.js";
@@ -168,7 +168,7 @@ async function startListening(){
   const keep=dict.open?dict.text:"";
   dict.open=true;dict.listening=true;dict.note="";dict.text=keep;reparse();drawDict();haptic();
   micBtn.classList.add("live");micBtn.setAttribute("aria-label","Stop dictating");
-  dict.session=await startDictation({
+  dict.session=await startDictation({lang:pref("dictLang")||"en-IN",
     onText:t=>{dict.text=(keep?keep+" ":"")+t;reparse();drawDict(true)},
     onEnd:why=>{
       dict.listening=false;dict.session=null;micBtn.classList.remove("live");micBtn.setAttribute("aria-label","Dictate tasks");
@@ -179,6 +179,9 @@ async function startListening(){
     }});
 }
 function stopListening(){dict.session&&dict.session.stop()}
+const DLANGS=[["en-IN","English"],["hi-IN","हिन्दी"],["kn-IN","ಕನ್ನಡ"],["ta-IN","தமிழ்"]];
+function langsHTML(){const cur=pref("dictLang")||"en-IN";
+  return `<div class="dict-langs" role="group" aria-label="Language you speak">${DLANGS.map(([c,n])=>`<button class="chip" data-lang="${c}" lang="${c}" aria-pressed="${c===cur}">${n}</button>`).join("")}</div>`}
 function closeDict(){stopListening();dict.open=false;dict.text="";dict.items=[];dict.note="";dictEl.hidden=true;dictEl.innerHTML=""}
 function drawDict(liveOnly){
   if(!dict.open){dictEl.hidden=true;return}
@@ -198,6 +201,7 @@ function drawDict(liveOnly){
       ?`<span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><b>Listening</b><span class="mono" id="dictCount">${n?`${n} task${n>1?"s":""} heard`:""}</span>`
       :`<b>${n?"Check what I heard":"Dictate tasks"}</b><span class="mono" id="dictCount"></span>`}
       <button class="btn sm" id="dictClose">Cancel</button></div>
+    ${langsHTML()}
     ${dict.listening
       ?`<p class="dict-live" id="dictLive">${esc(dict.text)||"Listening…"}</p><p class="dict-tip">Say several in one go: “Pay the electricity bill tomorrow at 6 pm, then call the plumber on Friday. It's important.”</p>`
       :`<textarea class="dict-text" id="dictText" rows="3" aria-label="What was heard. Edit to correct it." placeholder="Tap the mic and speak, or type here">${esc(dict.text)}</textarea>`}
@@ -207,6 +211,11 @@ function drawDict(liveOnly){
       ?`<button class="btn pri" id="dictStop">Done speaking</button>`
       :`<button class="btn pri" id="dictAdd"${n?"":" disabled"}>Add ${n||""} task${n===1?"":"s"}</button><button class="btn" id="dictMore">🎤 Say more</button>`}</div>`;
   $("#dictClose").onclick=closeDict;
+  dictEl.querySelectorAll("[data-lang]").forEach(b=>b.onclick=()=>{
+    if(b.dataset.lang===(pref("dictLang")||"en-IN"))return;
+    setPref("dictLang",b.dataset.lang);haptic();
+    if(dict.listening){stopListening();setTimeout(startListening,350)}else drawDict(); // switch language mid-way: restart, keeping what was heard
+  });
   if(dict.listening){$("#dictStop").onclick=stopListening;return}
   const ta=$("#dictText");
   ta.oninput=()=>{dict.text=ta.value;reparse();

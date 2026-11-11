@@ -62,3 +62,18 @@ test("dictation: empty and filler input", () => {
   assert.deepEqual(parseDictation(""), []);
   assert.deepEqual(parseDictation("um"), []);
 });
+
+test("dictation reads day and hour words in Hindi, Kannada and Tamil", () => {
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const kn = parseDictation("ನಾಳೆ 6 ಗಂಟೆಗೆ ಕರೆಂಟ್ ಬಿಲ್ ಕಟ್ಟು");
+  assert.equal(kn.length, 1);
+  assert.equal(kn[0].title, "ಕರೆಂಟ್ ಬಿಲ್ ಕಟ್ಟು");
+  assert.equal(new Date(kn[0].due).getDate(), tomorrow.getDate());
+  const hi = parseDictation("कल 5 बजे बिजली का बिल भरना। दूध लाना");
+  assert.deepEqual(hi.map(x => x.title), ["बिजली का बिल भरना", "दूध लाना"]);
+  assert.equal(new Date(hi[0].due).getDate(), tomorrow.getDate());
+  const ta = parseDictation("நாளை 6 மணிக்கு மருந்து வாங்கு");
+  assert.equal(ta[0].title, "மருந்து வாங்கு");
+  assert.ok(ta[0].due);
+  assert.equal(parseDictation("கலம் வாங்கு")[0].due, null); // a word that only starts like a day word is left alone
+});

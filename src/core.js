@@ -110,8 +110,17 @@ function sampleTasks(){
 /* ---------- dictation: one spoken paragraph → several tasks ---------- */
 const VERBS="pay|call|buy|send|book|email|mail|remind|schedule|renew|pick|get|finish|submit|review|clean|fix|order|check|prepare|meet|go|take|write|read|file|update|complete|plan|visit|drop|collect|message|text|ask|cancel|return|print|sign|transfer|recharge|refill|wash|cook|make|bring|share|upload|download|install|register|apply|confirm|follow|ring|reply|respond|draft|deploy|test|study|practice|practise|exercise|walk|water|feed|arrange|organise|organize|set|start|do";
 const LEADIN=/^(?:(?:and|also|then|next|plus|ok|okay|so|um|uh)\s+)*(?:please\s+)?(?:(?:can you\s+)?remind me (?:to|about)|i (?:need|have|want|would like|ought|got)(?: got)? to|i (?:should|must|gotta)|i'?ve got to|don'?t (?:let me )?forget to|do not forget to|make sure (?:i|to)|remember to|(?:add|create|make|new|another)(?: a| an| one)?(?: new)? (?:task|reminder|to-?do)(?: (?:to|for|called|saying|that says))?|we (?:need|have) to|need to|have to|to)\s+/i;
+/* Hindi, Kannada and Tamil words for days and hours, turned into the English the date parser reads.
+   Whole words only (no \b for these scripts). Hindi "कल" is read as tomorrow, as it almost always is for a task. */
+const IW=w=>new RegExp("(?<=^|[\\s,.।])(?:"+w.join("|")+")(?=$|[\\s,.।])","g");
+const IN_DAY2=IW(["परसों","ನಾಡಿದ್ದು","நாளை மறுநாள்","நாளன்னைக்கு"]);
+const IN_TODAY=IW(["आज","ಇಂದು","ಇವತ್ತು","இன்று","இன்னைக்கு"]);
+const IN_TMRW=IW(["कल","ನಾಳೆ","நாளை","நாளைக்கு"]);
+const IN_HOUR=/(\d{1,2})(?:[:.](\d{2}))?\s*(?:बजे|ಗಂಟೆಗೆ|ಗಂಟೆ|மணிக்கு|மணி)/g;
 function normaliseSpeech(text){
   return String(text||"")
+    .replace(IN_DAY2," in 2 days ").replace(IN_TODAY," today ").replace(IN_TMRW," tomorrow ")
+    .replace(IN_HOUR,(m,h,mm)=>" at "+h+(mm?":"+mm:"")+" ")
     .replace(/\b([ap])\.\s?m\.?/gi,"$1m")                 // 5 p.m. → 5 pm
     .replace(/\b(\d{1,2})\s*o'?\s?clock\b/gi,"at $1")      // 6 o'clock → at 6
     .replace(/\bday after tomorrow\b/gi,"in 2 days")
@@ -130,7 +139,7 @@ function splitDictation(text){
   const t=normaliseSpeech(text);
   if(!t)return [];
   const mark=t
-    .replace(/[.;!?\n]+\s*/g," ¦ ")
+    .replace(/[.;!?\n।]+\s*/g," ¦ ")
     .replace(/\s*,?\s*\b(?:and then|after that|and also|then|also|next task|new task|another task|next|plus)\b,?\s+/gi," ¦ ")
     .replace(new RegExp("\\s*(?:,\\s*and|,|\\band)\\s+(?=(?:(?:i|we)\\s+(?:need|have|want|should|must)\\b|remind me\\b|don'?t forget\\b|remember to\\b|(?:"+VERBS+")\\b))","gi")," ¦ ");
   return mark.split("¦").map(x=>x.trim()).filter(x=>x.replace(/[^\p{L}\p{N}]/gu,"").length>1);
