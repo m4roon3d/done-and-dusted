@@ -476,6 +476,9 @@ button.tmap-tile:focus-visible{outline:3px solid var(--ink);outline-offset:-3px;
 .bands-tile .bands i.g{background:var(--ok)}
 .bands-tile .tlab{position:relative;z-index:1;align-self:flex-start;max-width:calc(100% - 12px);margin:6px;padding:4px 7px;border-radius:7px;background:color-mix(in srgb,var(--surface) 90%,transparent);color:var(--ink);display:flex;flex-direction:column;gap:2px;min-width:0}
 .bands-tile .tlab .sb{color:var(--muted);opacity:1}
+.bands-tile .tlab .nm{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+.bands-tile.small .tlab{margin:4px;padding:2px 6px;max-width:calc(100% - 8px)}
+.bands-tile.small .tlab .nm{font-size:.78rem}
 .tm-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:.8rem;color:var(--muted)}
 .dash-in .tmap-tile{animation:cellin .5s cubic-bezier(.3,1.5,.5,1) backwards;animation-delay:calc(.15s + var(--i,0) * 35ms)}
 .rv{animation:rise .3s cubic-bezier(.2,.8,.2,1) both}
