@@ -337,10 +337,30 @@ function renderDash(list,now,t0){
     const b=e.target.closest(".hm-cell");if(!b||b.classList.contains("n"))return;
     const pick={cat:b.dataset.c,s:+b.dataset.s};
     hmSel=hmSel&&hmSel.cat===pick.cat&&hmSel.s===pick.s?null:pick;
+    if(hmReview){hmReview=null;el.querySelectorAll(".rag-pill.on").forEach(x=>{x.classList.remove("on");x.setAttribute("aria-pressed","false")})}
     hm.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
     if(hmSel){b.classList.add("sel");const r=b.getBoundingClientRect();
       const col=tok(b.classList.contains("r")?"--danger":b.classList.contains("a")?"--accent":"--ok");burst(r.left+r.width/2,r.top+r.height/2,10,[col,col,tok("--ink")],.5)}
     $("#hm-detail").innerHTML=hmDetail(view(),Date.now(),sod(Date.now()).getTime());
+  });
+  const rs=el.querySelector("#ragSum");
+  if(rs)rs.addEventListener("click",e=>{
+    const b=e.target.closest("[data-rag]");if(!b)return;
+    const k=b.dataset.rag;
+    hmReview=hmReview&&hmReview.color===k?null:{color:k,idx:0,total:0};hmSel=null;
+    if(hmReview){const r=b.getBoundingClientRect(),col=tok(k==="r"?"--danger":k==="a"?"--accent":"--ok");burst(r.left+r.width/2,r.top+r.height/2,12,[col,col,tok("--ink")],.6);haptic()}
+    rs.querySelectorAll(".rag-pill").forEach(x=>{const on=!!hmReview&&x.dataset.rag===hmReview.color;x.classList.toggle("on",on);x.setAttribute("aria-pressed",on)});
+    el.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
+    redrawReview(false);
+    if(hmReview)$("#hm-detail").scrollIntoView({block:"nearest",behavior:REDUCED.matches?"auto":"smooth"});
+  });
+  const hd=el.querySelector("#hm-detail");
+  if(hd)hd.addEventListener("click",e=>{
+    if(!hmReview)return;
+    const b=e.target.closest("[data-rv]");
+    if(b){reviewAct(b.dataset.rv,b.dataset.id,b);return}
+    const it=e.target.closest("[data-rvi]");
+    if(it&&+it.dataset.rvi!==hmReview.idx){hmReview.idx=+it.dataset.rvi;redrawReview(true)}
   });
   wireRemindersPanel();
 }
@@ -453,7 +473,7 @@ function renderPlan(list,now,t0){
    today     : open & past its time = Red, open later today = Amber, all done = Green
    upcoming  : 3+ tasks or any Important = Amber (heavy / at risk), otherwise Green
    category  : Red if anything overdue, Amber if something due within 48 h, otherwise Green */
-let hmSel=null;
+let hmSel=null,hmReview=null; // hmReview: {color:"r"|"a"|"g", idx, total}
 const RAGW={r:"Red",a:"Amber",g:"Green"};
 function cellStatus(arr,s,now,t0){
   if(!arr.length)return null;
@@ -472,12 +492,10 @@ function catStatus(arr,now){
 function heatmapHTML(list,now,t0,names){
   const days=[...Array(14)].map((_,i)=>t0+(i-7)*DAY);
   const rows=[["All",list],...names.map(c=>[c,list.filter(t=>t.cat===c)])];
-  const stat={r:0,a:0,g:0};names.forEach(c=>stat[catStatus(list.filter(t=>t.cat===c),now)]++);
-  let h=`<div class="rag-sum">
-    <span class="rag-pill r" style="--d:0"><span class="dot"></span><b data-n="${stat.r}">${stat.r}</b> Red</span>
-    <span class="rag-pill a" style="--d:1"><span class="dot"></span><b data-n="${stat.a}">${stat.a}</b> Amber</span>
-    <span class="rag-pill g" style="--d:2"><span class="dot"></span><b data-n="${stat.g}">${stat.g}</b> Green</span>
-  </div><div class="hm-wrap"><div class="hm" role="grid" aria-label="Status by category and day">`;
+  const rg=ragTasks(list,now,t0);
+  const pill=(k,i,sub)=>`<button class="rag-pill ${k}${hmReview&&hmReview.color===k?" on":""}" data-rag="${k}" style="--d:${i}" aria-pressed="${!!(hmReview&&hmReview.color===k)}"><span class="dot"></span><b data-n="${rg[k].length}">${rg[k].length}</b><span class="pl">${RAGW[k]}<small>${sub}</small></span></button>`;
+  let h=`<div class="rag-sum" id="ragSum">${pill("r",0,"overdue")}${pill("a",1,"due today or at risk")}${pill("g",2,"on track")}</div>
+  <p class="rag-hint">Tap a colour to review its tasks one after another.</p><div class="hm-wrap"><div class="hm" role="grid" aria-label="Status by category and day">`;
   h+=`<span></span>`+days.map((s,i)=>{const d=new Date(s);return `<span class="hm-h${s===t0?" now":""}" style="--w:${i}">${s===t0?"<span>Today</span>":d.toLocaleDateString("en-IN",{weekday:"narrow"})+"<br>"+d.getDate()}</span>`}).join("");
   rows.forEach(([c,arr],ri)=>{
     const cs=catStatus(arr,now);
@@ -497,8 +515,75 @@ function heatmapHTML(list,now,t0,names){
   <div class="hm-detail" id="hm-detail">${hmDetail(list,now,t0)}</div>`;
   return h;
 }
+/* Every open task with a due date falls under one colour:
+   Red = overdue · Amber = still due today, or coming up and at risk (Important, or on a day with 3+ tasks) · Green = the rest */
+function ragTasks(list,now,t0){
+  const open=list.filter(t=>!t.done&&t.due).sort((a,b)=>a.due-b.due);
+  const perDay={};open.forEach(t=>{if(t.due>=now){const k=sod(t.due).getTime();perDay[k]=(perDay[k]||0)+1}});
+  const out={r:[],a:[],g:[]};
+  for(const t of open){
+    if(t.due<now)out.r.push(t);
+    else if(t.due<t0+DAY||t.pri||perDay[sod(t.due).getTime()]>=3)out.a.push(t);
+    else out.g.push(t);
+  }
+  return out;
+}
+const RAGSUB={r:"Overdue. Finish these or give them a new day.",a:"Due today, or coming up on a heavy day or marked Important.",g:"On track. Nothing needed unless plans changed."};
+function reviewHTML(list,now,t0){
+  const k=hmReview.color,arr=ragTasks(list,now,t0)[k];
+  const total=Math.max(hmReview.total||0,arr.length);hmReview.total=total;
+  if(!arr.length)return `<div class="rv"><div class="rv-head"><h5><span class="rag-tag ${k}">${RAGW[k]}</span> All reviewed</h5><button class="btn sm" data-rv="close">Close</button></div>
+    <div class="rv-done">${k==="g"?"No on-track tasks to review.":"Nothing left under "+RAGW[k]+". Done & dusted."}</div></div>`;
+  const i=hmReview.idx=Math.min(hmReview.idx,arr.length-1);
+  const cleared=total-arr.length;
+  const row=(t,j)=>{
+    const late=t.due<now,cur=j===i;
+    const reason=late?"Overdue":t.due<t0+DAY?"Due today":t.pri?"Important":k==="a"?"Heavy day":"On track";
+    return `<div class="rv-item${cur?" cur":""}" data-rvi="${j}" style="--cc:${cc(t.cat)}">
+      <div class="rv-top"><span class="rv-n mono">${j+1}</span><div class="body"><div class="t">${esc(t.title)}</div>
+        <div class="meta"><span class="cat">${esc(t.cat)}</span><span class="${late?"late":""}">${esc(fmtDue(t.due))}</span><span class="rv-why">${reason}</span></div></div></div>
+      ${cur?`<div class="rv-acts">
+        <button class="btn pri" data-rv="done" data-id="${esc(t.id)}">Done ✓</button>
+        ${late||t.due<t0+DAY?`<button class="btn" data-rv="hour" data-id="${esc(t.id)}">+1 hour</button>`:""}
+        <button class="btn" data-rv="tomorrow" data-id="${esc(t.id)}">Tomorrow</button>
+        <button class="btn" data-rv="week" data-id="${esc(t.id)}">Next week</button>
+        ${arr.length>1?`<button class="btn" data-rv="skip">${i<arr.length-1?"Skip →":"Back to first"}</button>`:""}
+      </div>`:""}</div>`};
+  return `<div class="rv">
+    <div class="rv-head"><h5><span class="rag-tag ${k}">${RAGW[k]}</span> Reviewing ${i+1} of ${arr.length}</h5><button class="btn sm" data-rv="close">Close</button></div>
+    <p class="rv-sub">${RAGSUB[k]}</p>
+    <div class="rv-bar ${k}"><span style="width:${total?cleared/total*100:0}%"></span></div>
+    <div class="rv-list">${arr.map(row).join("")}</div></div>`;
+}
+function reviewAct(act,id,btn){
+  const now=Date.now(),t0=sod(now).getTime();
+  if(act==="close"){hmReview=null;render();return}
+  if(act==="skip"){const n=ragTasks(view(),now,t0)[hmReview.color].length;hmReview.idx=(hmReview.idx+1)%Math.max(1,n);redrawReview(true);return}
+  const t=view().find(x=>x.id===id);if(!t)return;
+  const item=btn.closest(".rv-item");
+  const go=next=>{
+    if(item&&!REDUCED.matches){item.classList.add("leaving");setTimeout(()=>{save(next)},320)}else save(next);
+  };
+  if(act==="done"){
+    const r=btn.getBoundingClientRect();burst(r.left+r.width/2,r.top+r.height/2,18,[tok(catVar(t.cat)),tok("--accent")],.8);
+    if(item){const ir=item.getBoundingClientRect();setTimeout(()=>puff(ir.left+ir.width*.5,ir.top+ir.height/2,ir.width*.5),200)}
+    dustBrand();haptic("success");
+    go({...t,done:true,doneAt:now});
+    toast({t:"Dusted ✓",s:t.title,ttl:2500,undo:()=>save({...t})});
+  }else{
+    const next=act==="hour"?{...t,due:now+3600e3,reminded:false}:placeOn(t,t0+(act==="week"?7:1)*DAY,now);
+    haptic();go(next);
+    toast({t:"Moved to "+fmtDue(next.due),s:t.title,ttl:2500,undo:()=>save({...t})});
+  }
+}
+function redrawReview(scroll){
+  const d=$("#hm-detail");if(!d)return;
+  d.innerHTML=hmDetail(view(),Date.now(),sod(Date.now()).getTime());
+  if(scroll)d.querySelector(".rv-item.cur")?.scrollIntoView({block:"nearest",behavior:REDUCED.matches?"auto":"smooth"});
+}
 function hmDetail(list,now,t0){
-  if(!hmSel)return `<div style="font-size:.8rem;color:var(--muted)">Tap a square to see its tasks.</div>`;
+  if(hmReview)return reviewHTML(list,now,t0);
+  if(!hmSel)return `<div style="font-size:.8rem;color:var(--muted)">Or tap a square to see that day's tasks.</div>`;
   const {cat,s}=hmSel;
   const day=list.filter(t=>(cat==="All"||t.cat===cat)&&t.due>=s&&t.due<s+DAY).sort((a,b)=>a.due-b.due);
   if(!day.length)return "";
