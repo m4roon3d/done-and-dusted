@@ -457,6 +457,19 @@ button.rag-pill:active{transform:scale(.96)}
 .rag-pill.on{background:var(--surface)}
 .rag-pill.r.on{border-color:var(--danger)}.rag-pill.a.on{border-color:var(--amber)}.rag-pill.g.on{border-color:var(--ok)}
 .rag-hint{font-size:.8rem;color:var(--muted);margin:-6px 0 12px}
+.tmap{position:relative;width:100%;height:300px;background:var(--sunk);border-radius:14px;overflow:hidden}
+.tmap-tile{position:absolute;box-sizing:border-box;border:2px solid var(--surface);border-radius:8px;padding:7px 8px;display:flex;flex-direction:column;justify-content:space-between;gap:2px;text-align:left;font:inherit;color:var(--surface);overflow:hidden;min-width:0;margin:0;cursor:default}
+button.tmap-tile{cursor:pointer;transition:filter .2s}
+button.tmap-tile:hover{filter:brightness(1.08)}
+button.tmap-tile:focus-visible{outline:3px solid var(--ink);outline-offset:-3px;z-index:2}
+.tmap-tile.r{background:var(--danger)}
+.tmap-tile.a{background:var(--amber);color:var(--amber-ink)}
+.tmap-tile.g{background:var(--ok)}
+.tmap-tile .nm{font-weight:800;font-size:.9rem;line-height:1.15;overflow-wrap:anywhere}
+.tmap-tile .sb{font-size:.7rem;font-weight:600;line-height:1.25;opacity:.95}
+.tmap-tile.done .nm{text-decoration:line-through;opacity:.85}
+.tm-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:.8rem;color:var(--muted)}
+.dash-in .tmap-tile{animation:cellin .5s cubic-bezier(.3,1.5,.5,1) backwards;animation-delay:calc(.15s + var(--i,0) * 35ms)}
 .rv{animation:rise .3s cubic-bezier(.2,.8,.2,1) both}
 .rv-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .rv-head h5{margin:0;font-size:.9rem;display:flex;gap:8px;align-items:center}
