@@ -400,6 +400,15 @@ function rowHTML(t){
 }
 
 /* ---------- dashboard ---------- */
+/* The Dashboard's parts, in the order they show. All are on until the person hides them. */
+const DASH=[["tiles","Summary numbers"],["map","Task map"],["heat","Status heatmap"],["ring","Today's progress"],["cats","By category"],["week","Coming up"],["chart","Last 14 days"],["rem","Reminders"]];
+let dashEdit=false,dashOpening=false; // dashOpening: animate the chips panel only as it opens
+function dashBarHTML(hide){
+  return `<div class="dash-bar"><button class="btn sm" id="dashEdit" aria-expanded="${dashEdit}" aria-controls="dashPick">${dashEdit?"Done":"Customise"}</button></div>`+
+  (dashEdit?`<div class="dash-pick${dashOpening?" in":""}" id="dashPick"><p>Tap a part to show or hide it on the Dashboard.</p>
+    <div class="dash-chips" role="group" aria-label="Show on the Dashboard">${DASH.map(([k,n])=>`<button class="chip" data-dash="${k}" aria-pressed="${!hide.has(k)}">${n}</button>`).join("")}</div>
+    ${hide.size?`<button class="btn sm" id="dashReset">Show all</button>`:""}</div>`:"");
+}
 function renderDash(list,now,t0){
   const el=$("#v-dash");
   const open=list.filter(t=>!t.done),done=list.filter(t=>t.done);
@@ -422,33 +431,48 @@ function renderDash(list,now,t0){
   const next=open.filter(t=>t.due).sort((a,b)=>a.due-b.due).slice(0,4);
 
   let h=examples?`<div class="note"><span>Dashboard is showing the example tasks.</span></div>`:"";
-  h+=`<div class="tiles">
+  // each part is built on its own; the person picks which ones show (Customise)
+  const P={};
+  P.tiles=`<div class="tiles">
     <div class="tile" style="--d:0"><div class="k">Open</div><div class="v" data-n="${open.length}">${open.length}</div><div class="s">${open.filter(t=>!t.due).length} without a date</div></div>
     <div class="tile ${todayAll.some(t=>!t.done)?"warm":""}" style="--d:1"><div class="k">Due today</div><div class="v" data-n="${todayAll.filter(t=>!t.done).length}">${todayAll.filter(t=>!t.done).length}</div><div class="s">${todayDone} done today</div></div>
     <div class="tile ${overdue.length?"bad":""}" style="--d:2"><div class="k">Overdue</div><div class="v" data-n="${overdue.length}">${overdue.length}</div><div class="s">${overdue.length?"oldest "+fmtDue(Math.min(...overdue.map(t=>t.due))):"all clear"}</div></div>
     <div class="tile" style="--d:3"><div class="k">Done · 7 days</div><div class="v" data-n="${weekDone}">${weekDone}</div><div class="s">${streak} day streak${streak>=3?" 🔥":""}</div></div>
-  </div>
-  <div class="panel" style="--d:4"><h4>Task map <small>tap a category</small></h4>${treemapHTML(list,now,t0)}</div>
-  <div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day</small></h4>${heatmapHTML(list,now,t0)}</div>
-  <div class="two">
-    <div class="panel ring" style="--d:4"><svg viewBox="0 0 150 150" role="img" aria-label="Today ${Math.round(pct*100)} percent complete">
+  </div>`;
+  P.map=`<div class="panel" style="--d:4"><h4>Task map <small>tap a category</small></h4>${treemapHTML(list,now,t0)}</div>`;
+  P.heat=`<div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day</small></h4>${heatmapHTML(list,now,t0)}</div>`;
+  P.ring=`<div class="panel ring" style="--d:4"><svg viewBox="0 0 150 150" role="img" aria-label="Today ${Math.round(pct*100)} percent complete">
       <circle cx="75" cy="75" r="${R}" fill="none" stroke="var(--sunk)" stroke-width="14"/>
       <circle class="prog" cx="75" cy="75" r="${R}" fill="none" stroke="var(--accent)" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct)}" transform="rotate(-90 75 75)" style="--c:${C}"/>
       <text x="75" y="80" text-anchor="middle" fill="var(--ink)" style="font:800 30px var(--f-display)"><tspan data-n="${Math.round(pct*100)}">${Math.round(pct*100)}</tspan>%</text>
       <text x="75" y="100" text-anchor="middle" fill="var(--muted)" style="font:600 11px var(--f-body)">${todayDone} of ${todayTotal}</text>
-    </svg><div class="lbl">Today's progress</div></div>
-    <div class="panel" style="--d:5"><h4>By category <small>open vs done</small></h4><div class="bars">${names.length?names.map((c,ci)=>{const o=m[c].open,d=m[c].done;return `<div class="bar" style="--d:${ci}"><span class="nm" style="color:${cc(c)}">${esc(c)}</span><span class="track" style="width:${Math.max(8,(o+d)/cmax*100)}%"><span style="width:${o/(o+d)*100}%;background:${cc(c)}"></span><span style="width:${d/(o+d)*100}%;background:color-mix(in srgb,${cc(c)} 35%,var(--sunk))"></span></span><span class="num mono">${o} / ${d}</span></div>`}).join(""):`<div class="empty">No tasks yet.</div>`}</div>
-      <div class="legend"><span><i style="background:var(--muted)"></i>Open</span><span><i style="background:color-mix(in srgb,var(--muted) 35%,var(--sunk))"></i>Done</span></div></div>
-  </div>
-  <div class="panel" style="--d:6"><h4>Coming up <small>open tasks due, next 7 days</small></h4><div class="week">${week.map((w,i)=>`<div style="--d:${i}" class="day${w.n&&w.n===wmax?" max":w.n?" hot":""}">${i===0?"Today":new Date(w.s).toLocaleDateString("en-IN",{weekday:"short"})}<b>${w.n}</b>${new Date(w.s).getDate()}</div>`).join("")}</div>
+    </svg><div class="lbl">Today's progress</div></div>`;
+  P.cats=`<div class="panel" style="--d:5"><h4>By category <small>open vs done</small></h4><div class="bars">${names.length?names.map((c,ci)=>{const o=m[c].open,d=m[c].done;return `<div class="bar" style="--d:${ci}"><span class="nm" style="color:${cc(c)}">${esc(c)}</span><span class="track" style="width:${Math.max(8,(o+d)/cmax*100)}%"><span style="width:${o/(o+d)*100}%;background:${cc(c)}"></span><span style="width:${d/(o+d)*100}%;background:color-mix(in srgb,${cc(c)} 35%,var(--sunk))"></span></span><span class="num mono">${o} / ${d}</span></div>`}).join(""):`<div class="empty">No tasks yet.</div>`}</div>
+      <div class="legend"><span><i style="background:var(--muted)"></i>Open</span><span><i style="background:color-mix(in srgb,var(--muted) 35%,var(--sunk))"></i>Done</span></div></div>`;
+  P.week=`<div class="panel" style="--d:6"><h4>Coming up <small>open tasks due, next 7 days</small></h4><div class="week">${week.map((w,i)=>`<div style="--d:${i}" class="day${w.n&&w.n===wmax?" max":w.n?" hot":""}">${i===0?"Today":new Date(w.s).toLocaleDateString("en-IN",{weekday:"short"})}<b>${w.n}</b>${new Date(w.s).getDate()}</div>`).join("")}</div>
     ${next.length?`<div class="list" style="margin-top:12px">${next.map(t=>`<div class="row" style="--cc:${cc(t.cat)};grid-template-columns:auto 1fr auto"><span class="tick" style="border-style:dotted"></span><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="cat">${esc(t.cat)}</span></div></div><span class="mono ${t.due<now?"late":""}" style="color:${t.due<now?"var(--danger)":"var(--muted)"}">${esc(fmtDue(t.due))}</span></div>`).join("")}</div>`:""}
-  </div>
-  <div class="panel" style="--d:7"><h4>Last 14 days <small>tasks completed vs added</small></h4><div class="chart">${chart14(days)}</div>
-    <div class="legend"><span><i style="background:var(--accent)"></i>Completed</span><span><i style="background:var(--muted)"></i>Added</span></div></div>
-  <div class="panel" style="--d:8" id="remPanel">${remindersPanelHTML(open,now)}</div>`;
+  </div>`;
+  P.chart=`<div class="panel" style="--d:7"><h4>Last 14 days <small>tasks completed vs added</small></h4><div class="chart">${chart14(days)}</div>
+    <div class="legend"><span><i style="background:var(--accent)"></i>Completed</span><span><i style="background:var(--muted)"></i>Added</span></div></div>`;
+  P.rem=`<div class="panel" style="--d:8" id="remPanel">${remindersPanelHTML(open,now)}</div>`;
+  const hide=new Set(pref("dashHidden")||[]),on=k=>!hide.has(k),parts=[];
+  for(const [k] of DASH){
+    if(!on(k))continue;
+    if(k==="ring"&&on("cats")){parts.push(`<div class="two">${P.ring}${P.cats}</div>`);continue}
+    if(k==="cats"&&on("ring"))continue;
+    parts.push(P[k]);
+  }
+  h=dashBarHTML(hide)+h+(parts.join("")||`<div class="empty dash-empty">Every part of the Dashboard is hidden. Tap Customise to bring some back.</div>`);
   el.classList.toggle("dash-in",animIn);
   el.innerHTML=h;
   if(animIn)el.querySelectorAll("[data-n]").forEach(n=>countUp(n,+n.dataset.n));
+  dashOpening=false;
+  $("#dashEdit").onclick=()=>{dashEdit=!dashEdit;dashOpening=dashEdit;haptic();render()};
+  el.querySelectorAll("[data-dash]").forEach(b=>b.onclick=()=>{
+    const hid=new Set(pref("dashHidden")||[]),k=b.dataset.dash;
+    hid.has(k)?hid.delete(k):hid.add(k);setPref("dashHidden",[...hid]);haptic();render();
+  });
+  const dr=$("#dashReset");if(dr)dr.onclick=()=>{setPref("dashHidden",[]);haptic();render()};
   const tw=el.querySelector(".tm-wrap");
   if(tw)tw.addEventListener("click",e=>{
     const b=e.target.closest("[data-tcat]");if(!b)return;
