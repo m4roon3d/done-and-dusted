@@ -501,7 +501,8 @@ function renderDash(list,now,t0){
     <div class="tile ${overdue.length?"bad":""}" style="--d:2"><div class="k">Overdue</div><div class="v" data-n="${overdue.length}">${overdue.length}</div><div class="s">${overdue.length?"oldest "+fmtDue(Math.min(...overdue.map(t=>t.due))):"all clear"}</div></div>
     <div class="tile" style="--d:3"><div class="k">Done · 7 days</div><div class="v" data-n="${weekDone}">${weekDone}</div><div class="s">${streak} day streak${streak>=3?" 🔥":""}</div></div>
   </div>`;
-  P.map=`<div class="panel" style="--d:4"><h4>Task map <small>tap a category</small></h4>${treemapHTML(list,now,t0)}</div>`;
+  if(tmCat&&!list.some(t=>t.cat===tmCat))tmCat=null;
+  P.map=`<div class="panel" style="--d:4"><h4>Task map <small>${tmCat?"tap a task":"tap a category"}</small></h4>${tmCat?taskTreemapHTML(list,now,t0,tmCat):treemapHTML(list,now,t0)}</div>`;
   P.heat=`<div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day</small></h4>${heatmapHTML(list,now,t0)}</div>`;
   P.ring=`<div class="panel ring" style="--d:4"><svg viewBox="0 0 150 150" role="img" aria-label="Today ${Math.round(pct*100)} percent complete">
       <circle cx="75" cy="75" r="${R}" fill="none" stroke="var(--sunk)" stroke-width="14"/>
@@ -537,8 +538,13 @@ function renderDash(list,now,t0){
   const dr=$("#dashReset");if(dr)dr.onclick=()=>{setPref("dashHidden",[]);haptic();render()};
   const tw=el.querySelector(".tm-wrap");
   if(tw)tw.addEventListener("click",e=>{
-    const b=e.target.closest("[data-tcat]");if(!b)return;
-    filter=b.dataset.tcat;haptic();setView("tasks");
+    const up=e.target.closest("[data-tmup]"),go=e.target.closest("[data-tmgo]"),tk=e.target.closest("[data-tid]"),b=e.target.closest("[data-tcat]");
+    if(up){tmCat=null;animIn=true;haptic();render();return}
+    if(go){filter=go.dataset.tmgo;haptic();setView("tasks");return}
+    if(tk){ // open that task's editor in the Tasks view
+      const id=tk.dataset.tid;filter=tmCat||"All";openEdit=id;haptic();setView("tasks");
+      setTimeout(()=>document.querySelector(`.row[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({block:"center",behavior:"smooth"}),300);return}
+    if(b){tmCat=b.dataset.tcat;animIn=true;haptic();render()}
   });
   const hm=el.querySelector(".hm");
   if(hm)hm.addEventListener("click",e=>{
@@ -679,6 +685,7 @@ function renderPlan(list,now,t0){
    today     : open & past its time = Red, open later today = Amber, all done = Green
    upcoming  : 3+ tasks or any Important = Amber (heavy / at risk), otherwise Green
    category  : Red if anything overdue, Amber if something due within 48 h, otherwise Green */
+let tmCat=null; // task map drill-down: the category being shown task by task, or null for all categories
 let hmSel=null,hmReview=null; // hmReview: {color:"r"|"a"|"g", idx, total}
 const RAGW={r:"Red",a:"Amber",g:"Green"};
 function cellStatus(arr,s,now,t0){
@@ -757,7 +764,38 @@ function treemapHTML(list,now,t0){
   }).join("");
   return `<div class="tm-wrap"><div class="tmap" role="group" aria-label="Categories" style="height:${px}px">${tiles}</div>
     <div class="hm-legend"><span><i style="background:var(--danger)"></i>Red · overdue</span><span><i style="background:var(--amber)"></i>Amber · due today or at risk</span><span><i style="background:var(--ok)"></i>Green · on track or done</span></div>
-    <p class="rag-hint" style="margin:8px 0 0">Bigger tiles have more tasks. Each tile is split into red, amber and green by its tasks. Tap a category to see its tasks.</p></div>`;
+    <p class="rag-hint" style="margin:8px 0 0">Bigger tiles have more tasks. Each tile is split into red, amber and green by its tasks. Tap a category to map its tasks.</p></div>`;
+}
+/* Task map, one category: one tile per task. Colour = the task's RAG (done tasks green and struck through).
+   Size = how much it needs you: overdue 3, due today or at risk 2, on track 1.5, done 1; Important adds 1. */
+function taskTreemapHTML(list,now,t0,cat){
+  const arr=list.filter(t=>t.cat===cat),colour=taskColours(list,now,t0),RANK={r:0,a:1,g:2};
+  const n={r:0,a:0,g:0};
+  let items=arr.map(t=>{
+    const k=colour(t);n[k]++;
+    const sub=t.done?"Done":t.due?fmtDue(t.due):"No date";
+    return {v:(t.done?1:k==="r"?3:k==="a"?2:1.5)+(t.pri&&!t.done?1:0),id:t.id,k,name:t.title,sub,done:t.done,pri:t.pri,
+      ord:t.done?3:RANK[k],due:t.due||Infinity};
+  }).sort((a,b)=>a.ord-b.ord||a.due-b.due||a.name.localeCompare(b.name));
+  // same proportions as the category map; more tasks get a taller map so tiles stay tappable
+  const px=arr.length<=3?170:arr.length<=8?230:arr.length<=16?300:Math.min(520,300+(arr.length-16)*10),W=1000,H=Math.round(W*px/340);
+  const floor=Math.min(.12,.5/items.length),tot=items.reduce((s,it)=>s+it.v,0);
+  items.forEach(it=>{it.v=Math.max(it.v,floor*tot)});
+  const tiles=squarify(items,W,H).map((b,i)=>{
+    const wpx=b.w/W*340,hpx=b.h/H*px,tiny=wpx<48||hpx<30,small=wpx<100||hpx<64;
+    const label=`${b.name}: ${b.done?"done":RAGW[b.k].toLowerCase()}, ${b.sub}${b.pri&&!b.done?", Important":""}`;
+    const style=`left:${(b.x/W*100).toFixed(2)}%;top:${(b.y/H*100).toFixed(2)}%;width:${(b.w/W*100).toFixed(2)}%;height:${(b.h/H*100).toFixed(2)}%;--i:${Math.min(i,20)}`;
+    const inner=tiny?"":`<span class="nm">${b.pri&&!b.done?"● ":""}${esc(b.name)}</span>${small?"":`<span class="sb">${esc(b.sub)}</span>`}`;
+    return `<button class="tmap-tile task-tile ${b.k}${b.done?" done":""}${small?" small":""}" style="${style}" data-tid="${esc(b.id)}" aria-label="${esc(label)}" title="${esc(label)}">${inner}</button>`;
+  }).join("");
+  const open=arr.filter(t=>!t.done).length,pct=Math.round((arr.length-open)/arr.length*100);
+  return `<div class="tm-wrap"><div class="tm-head">
+      <button class="btn tm-up" data-tmup aria-label="Back to all categories">‹ All categories</button>
+      <span class="tm-crumb"><b style="color:${cc(cat)}">${esc(cat)}</b> · ${arr.length} task${arr.length>1?"s":""} · ${pct}% done</span>
+      <button class="btn" data-tmgo="${esc(cat)}">Open list</button></div>
+    <div class="tmap" role="group" aria-label="${esc(cat)} tasks" style="height:${px}px">${tiles}</div>
+    <div class="hm-legend"><span><i style="background:var(--danger)"></i>Overdue ${n.r}</span><span><i style="background:var(--amber)"></i>Due today or at risk ${n.a}</span><span><i style="background:var(--ok)"></i>On track or done ${n.g}</span></div>
+    <p class="rag-hint" style="margin:8px 0 0">Bigger tiles need you sooner: overdue, then due today, then Important. Tap a task to edit it.</p></div>`;
 }
 /* One colour per task: Green = done, or open and on track · Amber = open and due today, Important, or on a day
    with 3+ open tasks · Red = open and past its time. A day's square is split by how many tasks are in each. */
@@ -1116,6 +1154,7 @@ initNativeShell({onShown:startSplash,onBack:()=>{
   if(dict.open){closeDict();return true}
   if(picked){picked=null;render();return true}
   if(openEdit){openEdit=null;render();return true}
+  if(currentView==="dash"&&tmCat){tmCat=null;render();return true}
   if(currentView!=="tasks"){setView("tasks");return true}
   return false;
 }});
