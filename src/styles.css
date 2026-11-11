@@ -480,6 +480,12 @@ button.tmap-tile:focus-visible{outline:3px solid var(--ink);outline-offset:-3px;
 .bands-tile.small .tlab{margin:4px;padding:2px 6px;max-width:calc(100% - 8px)}
 .bands-tile.small .tlab .nm{font-size:.78rem}
 .tm-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:.8rem;color:var(--muted)}
+.tm-head .tm-crumb{flex:1;min-width:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm-head .btn{padding:5px 10px;font-size:.78rem}
+.task-tile .nm{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.task-tile.small{padding:4px 6px}
+.task-tile.small .nm{font-size:.74rem;-webkit-line-clamp:2}
+.task-tile.done{filter:saturate(.55);opacity:.8}
 .dash-in .tmap-tile{animation:cellin .5s cubic-bezier(.3,1.5,.5,1) backwards;animation-delay:calc(.15s + var(--i,0) * 35ms)}
 .rv{animation:rise .3s cubic-bezier(.2,.8,.2,1) both}
 .rv-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
