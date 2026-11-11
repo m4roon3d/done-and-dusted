@@ -578,6 +578,7 @@ button.tmap-tile:focus-visible{outline:3px solid var(--ink);outline-offset:-3px;
 @keyframes wave{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
 .dict-live{margin:0;font-size:1.05rem;line-height:1.45;min-height:1.5em;overflow-wrap:anywhere}
 .dict-tip{margin:0;font-size:.8rem;color:var(--muted)}
+.dict-langs{display:flex;gap:6px;flex-wrap:wrap}
 .dict-text{width:100%;border:1.5px solid var(--line);border-radius:12px;background:var(--bg);padding:10px 12px;font-size:.98rem;resize:vertical;min-height:84px}
 .dcards{display:grid;gap:6px}
 .dcards:empty{display:none}
