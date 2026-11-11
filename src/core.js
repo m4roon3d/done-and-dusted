@@ -67,9 +67,54 @@ function parseQuick(text){
   let t=text.replace(/(^|\s)#([\p{L}\p{N}_-]+)/u,(_,a,c)=>{cat=titleCase(c);return " "});
   t=t.replace(/(^|\s)!{1,3}(?=\s|$)/,()=>{pri=1;return " "});
   t=t.replace(/\b(urgent|important|asap)\b/i,m=>{pri=1;return m});
-  const w=parseWhen(t);
+  const r=parseRepeat(t);
+  const w=parseWhen(r.rest);
+  let due=w.due;
+  if(r.rep&&!due){const n=new Date(),d=sod(n);d.setHours(9,0,0,0);if(d<=n)d.setDate(d.getDate()+1);due=d.getTime()} // a repeat needs a first date: the next 9am
+  if(r.rep==="weekday"&&due){const d=new Date(due);while(d.getDay()===0||d.getDay()===6)d.setDate(d.getDate()+1);due=d.getTime()}
   const title=w.rest.replace(/\s+(by|on|at|before)$/i,"").trim();
-  return {title,due:w.due,cat:cat||guessCat(title),catGuessed:!cat,pri,hit:w.hit};
+  return {title,due,cat:cat||guessCat(title),catGuessed:!cat,pri,rep:r.rep,hit:w.hit};
+}
+
+/* ---------- repeating tasks ---------- */
+const REPEATS={day:"Daily",weekday:"Weekdays",week:"Weekly","2week":"Every 2 weeks",month:"Monthly",year:"Yearly"};
+const repLabel=r=>REPEATS[r]||"";
+/* Pull a repeat phrase out of typed or spoken text.
+   "every monday" keeps "monday" so the date parser sets the first day.
+   A bare "daily / weekly / monthly / yearly" only counts at the end or before a date word, so "Weekly report fri" keeps its title. */
+function parseRepeat(text){
+  let rep=null,s=" "+text+" ";
+  const take=(re,r,keep)=>{if(rep)return;const m=s.match(re);if(m){rep=typeof r==="function"?r(m):r;s=s.replace(m[0]," "+(keep?keep(m):"")+" ")}};
+  take(/\b(?:every\s+(?:other|second|2nd)\s+week|every\s+(?:2|two)\s+weeks)\b/i,"2week");
+  take(/\b(?:every\s+weekday|on\s+weekdays)\b/i,"weekday");
+  take(/\b(?:every\s*day|each\s+day)\b/i,"day");
+  take(/\b(?:every|each)\s+week\b/i,"week");
+  take(/\b(?:every|each)\s+month\b/i,"month");
+  take(/\b(?:every|each)\s+year\b/i,"year");
+  take(/\bevery\s+((?:sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)(?:day|nesday|sday|urday)?)\b/i,"week",m=>m[1]);
+  take(/\b(daily|weekdays|weekly|fortnightly|monthly|yearly|annually)\b(?=\s*(?:$|(?:at|on|by|from|starting|today|tonight|tomorrow|morning|evening)\b|\d))/i,
+    m=>({daily:"day",weekdays:"weekday",weekly:"week",fortnightly:"2week",monthly:"month",yearly:"year",annually:"year"})[m[1].toLowerCase()]);
+  return {rep,rest:s.replace(/\s+/g," ").trim()};
+}
+/* The next due time after `due` that is still in the future, so finishing a long-overdue daily task
+   doesn't hand back another overdue one. Monthly and yearly keep the day of the month (31st -> 28 Feb -> 31 Mar). */
+function nextDue(due,rep,now=Date.now()){
+  if(!due||!REPEATS[rep])return null;
+  const d=new Date(due),dom=d.getDate();
+  const step=()=>{
+    if(rep==="day")d.setDate(d.getDate()+1);
+    else if(rep==="weekday"){do{d.setDate(d.getDate()+1)}while(d.getDay()===0||d.getDay()===6)}
+    else if(rep==="week")d.setDate(d.getDate()+7);
+    else if(rep==="2week")d.setDate(d.getDate()+14);
+    else{
+      let y=d.getFullYear(),m=d.getMonth();if(rep==="month")m++;else y++;
+      const last=new Date(y,m+1,0).getDate();
+      d.setTime(new Date(y,m,Math.min(dom,last),d.getHours(),d.getMinutes()).getTime());
+    }
+  };
+  step();
+  for(let i=0;d.getTime()<=now&&i<5000;i++)step();
+  return d.getTime();
 }
 
 /* ---------- formatting ---------- */
@@ -157,8 +202,8 @@ function parseDictation(text,cats=[]){
     let ttl=q.title.replace(/^(?:and|to)\s+/i,""),was;
     do{was=ttl;ttl=ttl.replace(/[\s,]+$/,"").replace(/\s+(?:for|on|at|by|every|this|the|before|until|till|in|of|and|to)$/i,"")}while(ttl!==was); // words left dangling once the date is taken out
     const title=titleCase(ttl);
-    return {title,due:q.due,cat:cat||q.cat,catGuessed:!cat&&q.catGuessed,pri:pri||q.pri};
+    return {title,due:q.due,cat:cat||q.cat,catGuessed:!cat&&q.catGuessed,pri:pri||q.pri,rep:q.rep};
   }).filter(x=>x.title.length>1&&!/^(?:um+|uh+|er+|hmm+|ok|okay|so|and|then|yeah|yes|right|that'?s (?:it|all))$/i.test(x.title));
 }
 
-export { esc, uid, DAY, sod, PALETTE, KNOWN, GUESS, guessCat, titleCase, catVar, cc, MON, WD, parseWhen, mkDate, parseQuick, fmtDue, toLocalInput, sampleTasks, normaliseSpeech, splitDictation, parseDictation };
+export { esc, uid, DAY, sod, PALETTE, KNOWN, GUESS, guessCat, titleCase, catVar, cc, MON, WD, parseWhen, mkDate, parseQuick, REPEATS, repLabel, parseRepeat, nextDue, fmtDue, toLocalInput, sampleTasks, normaliseSpeech, splitDictation, parseDictation };

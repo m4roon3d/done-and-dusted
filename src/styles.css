@@ -719,3 +719,47 @@ html.look-fade,html.look-fade *{transition:background-color .35s ease,color .35s
 .dash-pick #dashReset{align-self:flex-start}
 .dash-chips .chip[aria-pressed="false"]{opacity:.7;text-decoration:line-through}
 .dash-empty{margin-top:12px}
+
+/* ---- repeating tasks ---- */
+.row .rep{color:var(--muted);font-weight:600;white-space:nowrap}
+
+/* ---- swipe a task: right = done, left = tomorrow ---- */
+.row{touch-action:pan-y}
+.row.swiping>*:not(.swipe-bg),.row.swipe-back>*:not(.swipe-bg){transform:translateX(var(--sx,0))}
+.row.swipe-back>*:not(.swipe-bg){transition:transform .2s ease-out}
+.swipe-bg{position:absolute;top:0;bottom:0;width:0;display:flex;align-items:center;overflow:hidden;font-size:.85rem;white-space:nowrap;z-index:1;pointer-events:none}
+.swipe-bg b{margin:0 14px;font-weight:800}
+.row.swipe-back .swipe-bg{transition:width .2s ease-out}
+.swipe-bg.go{left:0;justify-content:flex-start;background:color-mix(in srgb,var(--ok) 20%,var(--surface));color:var(--ok)}
+.swipe-bg.later{right:0;justify-content:flex-end;background:color-mix(in srgb,var(--amber) 24%,var(--surface));color:var(--ink)}
+.swipe-bg.go.armed{background:var(--ok);color:var(--surface)}
+.swipe-bg.later.armed{background:var(--amber);color:var(--amber-ink)}
+
+/* ---- tabs: icons are for the phone tab bar only ---- */
+.seg button svg{display:none}
+
+/* ---- phones: tab bar at the bottom, slimmer header, so tasks start higher ---- */
+@media (max-width:620px){
+  header{padding-top:10px}
+  .brand{gap:9px}
+  .mark{width:34px;height:34px}
+  .wm{font-size:1.32rem}
+  .tagline,.sync{display:none}
+  .today{font-size:.84rem;margin-top:5px}
+  .gear{width:38px;height:38px}
+  .add{margin-top:10px}
+  .parse:not(:has(.pchip)){display:none}          /* the typing hint only shows while you type */
+  .add:focus-within~.parse{display:flex}
+  main{margin-top:12px;padding-bottom:calc(78px + env(safe-area-inset-bottom,0px))}
+  .switch{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:15;margin:0;
+    padding:6px max(10px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(10px,env(safe-area-inset-left,0px));
+    background:color-mix(in srgb,var(--surface) 94%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-top:1px solid var(--line)}
+  .seg{background:transparent;padding:0;gap:2px;border-radius:0;max-width:520px;margin:0 auto}
+  .seg::before{top:0;bottom:0;left:0;width:calc((100% - 6px)/4);border-radius:14px;background:var(--sunk);box-shadow:none;transform:translateX(calc(var(--i) * (100% + 2px)))}
+  .seg button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;padding:6px 2px;border-radius:14px;font-size:.7rem;font-weight:700}
+  .seg button svg{display:block;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .seg button[aria-selected="true"] svg{stroke-width:2.4}
+  .toasts{bottom:calc(64px + env(safe-area-inset-bottom,0px));padding-bottom:10px}
+  /* the keyboard is up: get the tab bar out of the way */
+  body:has(:is(input:not([type=checkbox]):not([type=file]),textarea):focus) .switch{display:none}
+}
