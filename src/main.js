@@ -9,6 +9,7 @@ import "./styles.css";
 import JSZip from "jszip";
 import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
+import { pref } from "./prefs.js";
 import { loadAll, putTask, putTasks, deleteTask, migrateFromLocalStorage, requestPersist } from "./store.js";
 import { isNative, saveFile, haptic, initNativeShell, onResume } from "./platform.js";
 import { initNotifications, scheduleSync, webNotify } from "./notify.js";
@@ -726,11 +727,13 @@ function chart14(days){
 const fired=new Set(lsGet("dd.fired",[]));
 let audio=null;
 document.addEventListener("pointerdown",()=>{if(!audio){try{audio=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}},{once:true});
-function chime(){if(!audio)return;try{const n=audio.currentTime;[880,1320].forEach((f,i)=>{const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=f;o.type="sine";g.gain.setValueAtTime(0,n+i*.18);g.gain.linearRampToValueAtTime(.18,n+i*.18+.02);g.gain.exponentialRampToValueAtTime(.001,n+i*.18+.5);o.connect(g).connect(audio.destination);o.start(n+i*.18);o.stop(n+i*.18+.55)})}catch(e){}}
+function chime(){if(!audio||!pref("sound"))return;try{const n=audio.currentTime;[880,1320].forEach((f,i)=>{const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=f;o.type="sine";g.gain.setValueAtTime(0,n+i*.18);g.gain.linearRampToValueAtTime(.18,n+i*.18+.02);g.gain.exponentialRampToValueAtTime(.001,n+i*.18+.5);o.connect(g).connect(audio.destination);o.start(n+i*.18);o.stop(n+i*.18+.55)})}catch(e){}}
 function checkDue(){
   if(!loaded)return;const now=Date.now();
   view().filter(t=>!t.done&&t.due&&t.due<=now&&now-t.due<6*3600e3&&!fired.has(t.id+":"+t.due)).forEach(t=>{
-    fired.add(t.id+":"+t.due);lsSet("dd.fired",[...fired].slice(-300));chime();webNotify(t);haptic("warn");
+    fired.add(t.id+":"+t.due);lsSet("dd.fired",[...fired].slice(-300));
+    if(!pref("alerts"))return; // alerts are off: remember it came due, but stay quiet
+    chime();webNotify(t);haptic("warn");
     alarms.set(t.id,now+6000);
     toast({t:t.title,s:`${t.cat} · due ${fmtDue(t.due)}`,sticky:true,due:true,actions:[
       ["Done",()=>save({...t,done:true,doneAt:Date.now()}),"go"],
@@ -756,8 +759,8 @@ document.addEventListener("visibilitychange",()=>{
   animIn=true;prevGreet={today:null,over:null};
   if(currentView==="import")setView("tasks");else render();
   const mins=Math.round(away/6e4),awayTxt=mins<60?`${mins} min`:`${Math.round(mins/60)} hr`;
-  if(came.length){chime();toast({t:`Welcome back · ${came.length} came due`,s:came.slice(0,3).map(t=>t.title).join(", ")+(came.length>3?"…":""),sticky:true,due:true,actions:[["Show me",()=>{filter="All";setView("tasks");document.querySelector(".row.alarm")?.scrollIntoView({behavior:REDUCED.matches?"auto":"smooth",block:"center"})},"go"]]})}
-  else toast({t:`${partOfDay()}, welcome back`,s:`You were away ${awayTxt}. ${dueTodayOpen()?dueTodayOpen()+" still due today.":"Nothing pressing."}`,ttl:3500});
+  if(came.length&&pref("alerts")){chime();toast({t:`Welcome back · ${came.length} came due`,s:came.slice(0,3).map(t=>t.title).join(", ")+(came.length>3?"…":""),sticky:true,due:true,actions:[["Show me",()=>{filter="All";setView("tasks");document.querySelector(".row.alarm")?.scrollIntoView({behavior:REDUCED.matches?"auto":"smooth",block:"center"})},"go"]]})}
+  else if(!came.length)toast({t:`${partOfDay()}, welcome back`,s:`You were away ${awayTxt}. ${dueTodayOpen()?dueTodayOpen()+" still due today.":"Nothing pressing."}`,ttl:3500});
 });
 
 /* ---------- calendar export ---------- */
@@ -931,7 +934,7 @@ initStore();render();
 setTimeout(checkDue,1500);
 
 /* shared with settings.js */
-function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,
+function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>scheduleSync(view),
   getCap:()=>cap,setCap:v=>{cap=v;lsSet("dd.cap",cap)},
   reload:async()=>{tasks=await loadAll();examples=tasks.length===0;animIn=true;render();scheduleSync(view)},
   isExamples:()=>examples,getPersisted:()=>persisted}}

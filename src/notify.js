@@ -3,6 +3,7 @@
 //               with "Done ✓" and "+1 hour" buttons on the notification.
 // Web:          a browser notification when a task comes due while the app is open in a tab.
 import { isNative, platform } from "./platform.js";
+import { pref } from "./prefs.js";
 
 let LN = null;
 const MAX_PENDING = 60; // iOS keeps at most 64 pending notifications per app
@@ -70,6 +71,12 @@ export function scheduleSync(getTasks) {
 export async function sync(tasks, force = false) {
   if (!LN) return 0;
   if ((await permissionState()) !== "granted") return 0;
+  if (!pref("alerts")) { // alerts turned off in Settings: clear anything already scheduled
+    lastSig = "off";
+    const p = await LN.getPending();
+    if (p.notifications.length) await LN.cancel({ notifications: p.notifications.map((n) => ({ id: n.id })) });
+    return 0;
+  }
   const now = Date.now();
   const up = tasks
     .filter((t) => !t.done && t.due && t.due > now + 5000 && t.src !== "example")
@@ -99,7 +106,7 @@ export async function sync(tasks, force = false) {
 
 /* Web: show a system notification if the tab is in the background when something comes due. */
 export async function webNotify(t) {
-  if (isNative || !("Notification" in window) || Notification.permission !== "granted" || !document.hidden) return;
+  if (!pref("alerts") || isNative || !("Notification" in window) || Notification.permission !== "granted" || !document.hidden) return;
   const opts = { body: `${t.cat} · due now`, icon: "icons/icon-192.png", badge: "icons/icon-192.png", tag: "due-" + t.id, data: { taskId: t.id } };
   try {
     const reg = await navigator.serviceWorker?.getRegistration();

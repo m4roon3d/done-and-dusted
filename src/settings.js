@@ -1,6 +1,7 @@
 // Settings sheet (reminders, backup & restore, storage) and the Dashboard's reminders panel.
 import { isNative, platform, saveFile, haptic } from "./platform.js";
 import { permissionState, requestPermission, exactAlarmState, openExactAlarmSetting, sync } from "./notify.js";
+import { pref, setPref } from "./prefs.js";
 import { makeBackup, readBackup, restore, countTasks, isPersisted, requestPersist } from "./store.js";
 
 const $ = (s) => document.querySelector(s);
@@ -18,6 +19,11 @@ async function refreshPerm() {
 /* ---------- Dashboard panel ---------- */
 export function remindersPanelHTML(open, now) {
   const upcoming = open.filter((t) => t.due && t.due > now).length;
+  if (!pref("alerts")) {
+    return `<h4>Alerts <small>off</small></h4>
+      <p class="rem-p">You won't get a pop-up, chime or notification when a task comes due. Overdue tasks still show in red.</p>
+      <button class="btn pri" id="remAlertsOn">Turn alerts on</button>`;
+  }
   if (isNative) {
     const on = perm === "granted";
     return `<h4>Phone reminders <small>${on ? "on · work even when the app is closed" : "off"}</small></h4>
@@ -34,11 +40,25 @@ export function remindersPanelHTML(open, now) {
     <button class="btn pri" id="icsAll">Send ${upcoming} upcoming task${upcoming === 1 ? "" : "s"} to calendar</button></div>`;
 }
 export function wireRemindersPanel() {
-  const on = $("#remOn"), ex = $("#remExact"), ics = $("#icsAll");
+  const on = $("#remOn"), ex = $("#remExact"), ics = $("#icsAll"), back = $("#remAlertsOn");
+  if (back) back.onclick = () => setAlerts(true);
   if (on) on.onclick = enableReminders;
   if (ex) ex.onclick = async () => { exact = await openExactAlarmSetting(); app.render(); };
   if (ics) ics.onclick = () => app.exportICS(app.view().filter((t) => !t.done && t.due && t.due > Date.now()));
 }
+async function setAlerts(on) {
+  setPref("alerts", on);
+  if (isNative) await sync(app.view(), true).catch(() => {});
+  haptic();
+  app.toast(on
+    ? { t: "Alerts are on", s: "You'll be told when a task comes due.", ttl: 3000 }
+    : { t: "Alerts are off", s: "No pop-ups, chimes or notifications until you turn them back on.", ttl: 4000 });
+  app.render();
+  if (!$("#sheet").hidden) drawSheet();
+}
+const switchHTML = (id, on, label, sub) => `<label class="sw" for="${id}"><span class="sw-t"><b>${label}</b><small>${sub}</small></span>
+  <input type="checkbox" id="${id}" role="switch" ${on ? "checked" : ""}><span class="sw-k" aria-hidden="true"></span></label>`;
+
 async function enableReminders() {
   const r = await requestPermission();
   await refreshPerm();
@@ -83,15 +103,17 @@ async function drawSheet() {
   const n = await countTasks().catch(() => 0);
   const prot = isNative ? true : await isPersisted();
   const remLine = perm === "granted"
-    ? (isNative ? "On. Alerts arrive at each due time, even when the app is closed." : "On. You'll get a notification when a task comes due while the app is open.")
+    ? (isNative ? "Phone notifications are allowed. Alerts arrive at each due time, even when the app is closed." : "Browser notifications are allowed, so you're alerted even when this tab is in the background.")
     : perm === "denied" ? (isNative ? "Blocked. Turn notifications on in your phone's Settings → Apps → Done & Dusted." : "Blocked. Allow notifications for this site in your browser settings.")
-    : perm === "unsupported" ? "Not available on this device." : "Off.";
+    : perm === "unsupported" ? "Notifications aren't available on this device; you still get the pop-up and chime." : (isNative ? "Phone notifications aren't allowed yet, so alerts only show while the app is open." : "Browser notifications aren't allowed yet, so alerts only show while this tab is in front.");
   $("#sheetBody").innerHTML = `
     <section class="sset">
-      <h3>Reminders</h3>
-      <p>${esc(remLine)}</p>
-      ${perm === "prompt" ? `<button class="btn pri" id="sRemOn">Turn on reminders</button>` : ""}
-      ${isNative && platform === "android" && perm === "granted" && exact !== "granted" ? `<button class="btn" id="sExact">Allow exact alarms</button>` : ""}
+      <h3>Alerts</h3>
+      ${switchHTML("swAlerts", pref("alerts"), "Alert me when a task is due", isNative ? "Phone notification, pop-up and chime" : "Pop-up, chime and browser notification")}
+      ${pref("alerts") ? switchHTML("swSound", pref("sound"), "Chime sound", "Played with the pop-up while the app is open") : ""}
+      ${pref("alerts") ? `<p>${esc(remLine)}</p>` : `<p>Alerts are off. Overdue tasks still show in red in your lists.</p>`}
+      ${pref("alerts") && perm === "prompt" ? `<button class="btn pri" id="sRemOn">${isNative ? "Allow phone notifications" : "Allow browser notifications"}</button>` : ""}
+      ${pref("alerts") && isNative && platform === "android" && perm === "granted" && exact !== "granted" ? `<button class="btn" id="sExact">Allow exact alarms</button>` : ""}
     </section>
     <section class="sset">
       <h3>Backup</h3>
@@ -114,6 +136,8 @@ async function drawSheet() {
     </section>
     <p class="about">Done &amp; Dusted ${VERSION} · ${isNative ? (platform === "ios" ? "iPhone" : "Android") : "Web"} · Plan it · Do it · Dust it</p>`;
   const b = (id) => document.getElementById(id);
+  b("swAlerts").onchange = (e) => setAlerts(e.target.checked);
+  if (b("swSound")) b("swSound").onchange = (e) => { setPref("sound", e.target.checked); haptic(); };
   if (b("sRemOn")) b("sRemOn").onclick = enableReminders;
   if (b("sExact")) b("sExact").onclick = async () => { exact = await openExactAlarmSetting(); drawSheet(); };
   b("sBackup").onclick = doBackup;

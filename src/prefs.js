@@ -1,0 +1,15 @@
+// Small on-device preferences shared across modules.
+const KEY = "dd.prefs";
+const DEFAULTS = { alerts: true, sound: true };
+let cache = null;
+
+function load() {
+  if (cache) return cache;
+  try { cache = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY)) || {}) }; } catch { cache = { ...DEFAULTS }; }
+  return cache;
+}
+export const pref = (name) => load()[name];
+export function setPref(name, value) {
+  load()[name] = value;
+  try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch { /* storage blocked: keep it for this session */ }
+}
