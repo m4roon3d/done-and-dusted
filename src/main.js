@@ -17,7 +17,7 @@ import "./styles.css";
 import { applyLook, onSystemThemeChange } from "./theme.js";
 applyLook(); // before anything draws
 import JSZip from "jszip";
-import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation } from "./core.js";
+import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation, REPEATS, repLabel, nextDue } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
 import { playSplashSound } from "./splash-sound.js";
 import { pref, setPref } from "./prefs.js";
@@ -78,10 +78,28 @@ function failed(e){toast({t:"Couldn't save that change",s:(e&&e.message)||"Your 
 async function save(t){
   if(t.src==="example"){Object.assign(exList.find(x=>x.id===t.id),t);render();return}
   if(examples){examples=false}
-  const i=tasks.findIndex(x=>x.id===t.id); if(i>=0)tasks[i]=t; else tasks.push(t);
+  const i=tasks.findIndex(x=>x.id===t.id),prev=i>=0?tasks[i]:null;
+  let extra=null,gone=null;
+  if(t.rep&&t.due&&t.done&&prev&&!prev.done){ // a repeating task was finished: line up the next one
+    const due=nextDue(t.due,t.rep);
+    if(due){
+      extra={...t,id:uid(),due,done:false,doneAt:null,createdAt:Date.now(),reminded:false,spawned:null};t={...t,spawned:extra.id};
+      toast({t:"Repeats "+repLabel(t.rep).toLowerCase(),s:"Next one: "+fmtDue(due),ttl:3000});
+    }
+  }else if(prev&&prev.done&&!t.done&&prev.spawned){ // un-finished (Undo): take back the one that was lined up
+    const n=tasks.find(x=>x.id===prev.spawned);if(n&&!n.done)gone=n;t={...t,spawned:null};
+  }
+  if(i>=0)tasks[i]=t; else tasks.push(t);
+  if(extra)tasks.push(extra);
+  if(gone)tasks=tasks.filter(x=>x.id!==gone.id);
   render();
-  try{await putTask(t);told()}catch(e){failed(e)}
+  try{await putTask(t);if(extra)await putTask(extra);if(gone)await deleteTask(gone.id);told()}catch(e){failed(e)}
   scheduleSync(view);
+}
+function snooze(t){ // "not today": same time tomorrow
+  const now=Date.now(),next=placeOn(t,sod(now).getTime()+DAY,now);
+  haptic();save(next);
+  toast({t:"Moved to "+fmtDue(next.due),s:t.title,ttl:3000,undo:()=>save({...t})});
 }
 async function remove(t){
   if(t.src==="example"){exList=exList.filter(x=>x.id!==t.id);render();return}
@@ -159,10 +177,10 @@ function partOfDay(){const h=new Date().getHours();return h<5?"Working late":h<1
 const q=$("#quick");
 q.addEventListener("input",()=>{
   const v=q.value.trim();
-  if(!v){$("#parse").innerHTML='<span>Type naturally. <b>#Category</b>, a date like <b>fri 5pm</b> or <b>15 nov</b>, and <b>!</b> for important.</span>';return}
+  if(!v){$("#parse").innerHTML='<span>Type naturally. <b>#Category</b>, a date like <b>fri 5pm</b> or <b>15 nov</b>, and <b>!</b> for important. <b>every monday</b> repeats.</span>';return}
   const p=parseQuick(v);
   $("#parse").innerHTML=`<span class="pchip" style="color:${cc(p.cat)}">● ${esc(p.cat)}${p.catGuessed?" (guessed)":""}</span>`+
-   (p.due?`<span class="pchip">⏰ ${esc(fmtDue(p.due))}</span>`:`<span class="pchip">No date</span>`)+(p.pri?`<span class="pchip" style="color:var(--danger)">Important</span>`:"");
+   (p.due?`<span class="pchip">⏰ ${esc(fmtDue(p.due))}</span>`:`<span class="pchip">No date</span>`)+(p.rep?`<span class="pchip">↻ ${esc(repLabel(p.rep))}</span>`:"")+(p.pri?`<span class="pchip" style="color:var(--danger)">Important</span>`:"");
 });
 $("#addForm").addEventListener("submit",e=>{
   e.preventDefault();const v=q.value.trim();
@@ -171,9 +189,9 @@ $("#addForm").addEventListener("submit",e=>{
   if(examples){examples=false;animIn=true}
   const nid=uid();lastAdded=nid;haptic();
   const br=$("#addForm button").getBoundingClientRect();burst(br.left+br.width/2,br.top+br.height/2,14,[tok(catVar(p.cat)),tok("--accent")],.7);
-  save({id:nid,title:titleCase(p.title),cat:p.cat,due:p.due,pri:p.pri,done:false,doneAt:null,createdAt:Date.now(),src:"manual"});
+  save({id:nid,title:titleCase(p.title),cat:p.cat,due:p.due,pri:p.pri,rep:p.rep||null,done:false,doneAt:null,createdAt:Date.now(),src:"manual"});
   q.value="";q.dispatchEvent(new Event("input"));
-  toast({t:"Added",s:`${titleCase(p.title)}${p.due?" · "+fmtDue(p.due):""}`,ttl:2500});
+  toast({t:"Added",s:`${titleCase(p.title)}${p.due?" · "+fmtDue(p.due):""}${p.rep?" · repeats "+repLabel(p.rep).toLowerCase():""}`,ttl:2500});
   setView("tasks");
 });
 
@@ -244,7 +262,7 @@ function drawDict(liveOnly){
   $("#dictMore").onclick=startListening;
   $("#dictCards").onclick=e=>{const b=e.target.closest("[data-drop]");if(!b)return;dict.items.splice(+b.dataset.drop,1);drawDictAfterDrop()};
   $("#dictAdd").onclick=()=>{
-    const now=Date.now(),list=dict.items.map((x,i)=>({id:uid()+i,title:x.title,cat:x.cat,due:x.due,pri:x.pri,done:false,doneAt:null,createdAt:now+i,src:"voice"}));
+    const now=Date.now(),list=dict.items.map((x,i)=>({id:uid()+i,title:x.title,cat:x.cat,due:x.due,pri:x.pri,rep:x.rep||null,done:false,doneAt:null,createdAt:now+i,src:"voice"}));
     if(!list.length)return;
     if(examples)animIn=true;
     burstAt("#dictAdd",20);haptic("success");
@@ -313,6 +331,8 @@ function renderTasks(list,now,t0){
   if(examples) h+=`<div class="note" style="--d:0"><span>These are example tasks so you can see how Done &amp; Dusted works. They vanish when you add a task or import from Keep.</span><button id="goImp">Import from Keep</button></div>`;
   h+=`<div class="chips" role="group" aria-label="Filter by category"><button class="chip" aria-pressed="${filter==="All"}" data-f="All">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
      names.map((c,i)=>`<button class="chip" style="--d:${Math.min(i+1,10)}" aria-pressed="${filter===c}" data-f="${esc(c)}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`;
+  if(!examples&&open.length&&!pref("swipeTip")&&matchMedia("(pointer:coarse)").matches)
+    h+=`<div class="note" style="--d:0"><span>Tip: swipe a task right to finish it, or left to move it to tomorrow.</span><button id="tipOk">Got it</button></div>`;
   let any=false;
   for(const [name,cls,arr] of groups){
     if(!arr.length)continue;any=true;
@@ -327,6 +347,7 @@ function renderTasks(list,now,t0){
   lastAdded=null;
   el.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{filter=b.dataset.f;render()});
   const gi=el.querySelector("#goImp");if(gi)gi.onclick=()=>setView("import");
+  const tip=el.querySelector("#tipOk");if(tip)tip.onclick=()=>{setPref("swipeTip",true);render()};
   el.querySelectorAll(".row").forEach(r=>{
     const t=view().find(x=>x.id===r.dataset.id);if(!t)return;
     r.querySelector(".tick").onclick=e=>{
@@ -345,17 +366,56 @@ function renderTasks(list,now,t0){
       },REDUCED.matches?0:700);
     };
     r.querySelector(".more").onclick=()=>{openEdit=openEdit===t.id?null:t.id;render()};
+    if(!t.done&&openEdit!==t.id)wireSwipe(r,t);
     const f=r.querySelector(".edit");if(!f)return;
     f.querySelector("[data-a=save]").onclick=()=>{
       const v=n=>f.querySelector(`[name=${n}]`).value;
       let cat=v("cat")==="__new"?titleCase(v("newcat")||"Inbox"):v("cat");
-      const due=v("due")?new Date(v("due")).getTime():null;
-      openEdit=null;save({...t,title:v("title").trim()||t.title,cat,due,pri:+v("pri"),note:v("note"),reminded:due!==t.due?false:t.reminded});
+      let due=v("due")?new Date(v("due")).getTime():null;const rp=v("rep")||null;
+      if(rp&&!due){const n=new Date(),d=sod(n);d.setHours(9,0,0,0);if(d<=n)d.setDate(d.getDate()+1);due=d.getTime(); // a repeat needs a first date
+        toast({t:"Starts "+fmtDue(due),s:"A repeating task needs a date, so it starts at the next 9am.",ttl:4000})}
+      openEdit=null;save({...t,title:v("title").trim()||t.title,cat,due,pri:+v("pri"),rep:rp,note:v("note"),reminded:due!==t.due?false:t.reminded});
     };
+    const tm=f.querySelector("[data-a=tmr]");if(tm)tm.onclick=()=>{openEdit=null;snooze(t)};
     f.querySelector("[data-a=del]").onclick=()=>{openEdit=null;remove(t);toast({t:"Deleted",s:t.title,ttl:4000,undo:()=>save(t)})};
     f.querySelector("[data-a=cal]").onclick=()=>exportICS([t]);
     const sel=f.querySelector("[name=cat]");sel.onchange=()=>{f.querySelector(".newcat").hidden=sel.value!=="__new"};
   });
+}
+/* Swipe a task: right to finish it, left to move it to tomorrow. Touch and pen only; vertical drags still scroll. */
+function wireSwipe(r,t){
+  let sx=0,sy=0,dx=0,pid=null,on=false,dead=false,armed=false,bg=null;
+  const lim=()=>Math.min(120,r.offsetWidth*.32);
+  const set=x=>{dx=x;r.style.setProperty("--sx",x+"px");
+    if(bg){bg.className="swipe-bg "+(x>=0?"go":"later")+(Math.abs(x)>=lim()?" armed":"");bg.style.width=Math.abs(x)+"px";bg.firstChild.textContent=x>=0?"✓ Done":"Tomorrow →"}};
+  const tidy=()=>{r.classList.remove("swiping","swipe-back");r.style.removeProperty("--sx");if(bg){bg.remove();bg=null}};
+  r.addEventListener("pointerdown",e=>{
+    if(e.pointerType==="mouse"||e.target.closest("button,input,select,textarea,.edit")||r.classList.contains("completing")||r.classList.contains("swipe-back"))return;
+    sx=e.clientX;sy=e.clientY;dx=0;pid=e.pointerId;on=false;dead=false;armed=false;
+  });
+  r.addEventListener("pointermove",e=>{
+    if(e.pointerId!==pid||dead)return;
+    const x=e.clientX-sx,y=e.clientY-sy;
+    if(!on){
+      if(Math.abs(x)<10&&Math.abs(y)<10)return;
+      if(Math.abs(x)<Math.abs(y)*1.3){dead=true;return} // mostly vertical: leave it to scrolling
+      on=true;r.classList.add("swiping");try{r.setPointerCapture(pid)}catch{}
+      bg=document.createElement("span");bg.innerHTML="<b></b>";r.appendChild(bg);
+    }
+    set(x);
+    const a=Math.abs(x)>=lim();if(a&&!armed)haptic();armed=a;
+  });
+  const up=e=>{
+    if(e.pointerId!==pid)return;pid=null;
+    if(!on)return;on=false;
+    const go=e.type==="pointerup"&&Math.abs(dx)>=lim(),right=dx>0;
+    r.classList.remove("swiping");r.classList.add("swipe-back");
+    if(go&&!pref("swipeTip"))setPref("swipeTip",true);
+    if(!go){set(0);setTimeout(tidy,220)}
+    else if(right){set(0);setTimeout(()=>{tidy();r.querySelector(".tick").click()},140)}
+    else{const w=r.offsetWidth;r.style.setProperty("--sx",-w+"px");bg.style.width=w+"px";setTimeout(()=>snooze(t),REDUCED.matches?0:200)}
+  };
+  r.addEventListener("pointerup",up);r.addEventListener("pointercancel",up);
 }
 function rowHTML(t){
   const now=Date.now(),late=!t.done&&t.due&&t.due<now;
@@ -380,6 +440,7 @@ function rowHTML(t){
      ${t.due?`<span class="when ${late?"late":""}">${icon}${esc(when)}</span>`:""}
      ${late?`<span class="age">${esc(age)}</span>`:""}
      ${t.pri?`<span class="flag">● Important</span>`:""}
+     ${t.rep?`<span class="rep">↻ ${esc(repLabel(t.rep))}</span>`:""}
      ${t.src==="keep"?`<span class="src">Keep</span>`:""}
      ${t.note?`<span style="overflow-wrap:anywhere">${esc(String(t.note).slice(0,80))}</span>`:""}
    </div></div>
@@ -392,8 +453,9 @@ function rowHTML(t){
         <input class="newcat" name="newcat" id="e-new-${esc(t.id)}" placeholder="Category name" hidden></label>
       <label>Due<input type="datetime-local" name="due" id="e-due-${esc(t.id)}" value="${toLocalInput(t.due)}"></label>
       <label>Priority<select name="pri" id="e-pri-${esc(t.id)}"><option value="0"${!t.pri?" selected":""}>Normal</option><option value="1"${t.pri?" selected":""}>Important</option></select></label>
+      <label>Repeat<select name="rep" id="e-rep-${esc(t.id)}"><option value="">Doesn't repeat</option>${Object.entries(REPEATS).map(([k,n])=>`<option value="${k}"${t.rep===k?" selected":""}>${n}</option>`).join("")}</select></label>
       <label class="full">Note<textarea name="note" id="e-note-${esc(t.id)}">${esc(t.note||"")}</textarea></label>
-      <div class="acts"><button class="btn pri" data-a="save">Save</button>${t.due?`<button class="btn" data-a="cal">Add to phone calendar</button>`:`<button class="btn" data-a="cal" hidden></button>`}<button class="btn warn" data-a="del">Delete</button></div>
+      <div class="acts"><button class="btn pri" data-a="save">Save</button>${t.due?`<button class="btn" data-a="cal">Add to phone calendar</button>`:`<button class="btn" data-a="cal" hidden></button>`}${t.done?"":`<button class="btn" data-a="tmr">Move to tomorrow</button>`}<button class="btn warn" data-a="del">Delete</button></div>
     </div>`;
   }
   return h+`</div>`;
@@ -893,11 +955,12 @@ document.addEventListener("visibilitychange",()=>{
 });
 
 /* ---------- calendar export ---------- */
+const RRULE={day:"FREQ=DAILY",weekday:"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",week:"FREQ=WEEKLY","2week":"FREQ=WEEKLY;INTERVAL=2",month:"FREQ=MONTHLY",year:"FREQ=YEARLY"};
 async function exportICS(list){
   if(!list.length){toast({t:"Nothing to send",s:"Only tasks with a future due date can go to your calendar.",ttl:3500});return}
   const p=n=>String(n).padStart(2,"0");
   const f=ts=>{const d=new Date(ts);return `${d.getUTCFullYear()}${p(d.getUTCMonth()+1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}00Z`};
-  const ev=list.map(t=>["BEGIN:VEVENT",`UID:${t.id}@doneanddusted`,`DTSTAMP:${f(Date.now())}`,`DTSTART:${f(t.due)}`,`DTEND:${f(t.due+15*6e4)}`,
+  const ev=list.map(t=>["BEGIN:VEVENT",`UID:${t.id}@doneanddusted`,`DTSTAMP:${f(Date.now())}`,`DTSTART:${f(t.due)}`,`DTEND:${f(t.due+15*6e4)}`,...(RRULE[t.rep]?[`RRULE:${RRULE[t.rep]}`]:[]),
    `SUMMARY:${String(t.title).replace(/[,;\\]/g,m=>"\\"+m)}`,`CATEGORIES:${t.cat}`,`DESCRIPTION:Done & Dusted · ${t.cat}`,
    "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:Task due","TRIGGER:-PT15M","END:VALARM","END:VEVENT"].join("\r\n"));
   const ics=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Done and Dusted//Tasks//EN",...ev,"END:VCALENDAR"].join("\r\n");

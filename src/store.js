@@ -76,6 +76,7 @@ export function readBackup(text) {
       createdAt: Number.isFinite(t.createdAt) ? t.createdAt : Date.now(),
       src: t.src === "example" ? "manual" : String(t.src || "manual"),
       note: t.note ? String(t.note).slice(0, 5000) : "",
+      rep: ["day", "weekday", "week", "2week", "month", "year"].includes(t.rep) ? t.rep : null,
     }));
   if (!tasks.length) throw new Error("The backup has no tasks in it.");
   return { tasks, settings: (j && j.settings) || {}, exportedAt: j?.exportedAt || null };

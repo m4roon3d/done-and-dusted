@@ -16,6 +16,8 @@ One codebase, three ways to ship it:
 - **Native apps:** [Capacitor 8](https://capacitorjs.com) wraps the same web app in a native shell and gives it phone features.
 - **Dictation:** the mic button turns speech into text with the phone's recogniser (native) or the browser's (web: Chrome, Edge, Safari). `parseDictation` in `src/core.js` then splits it into tasks with dates, categories and priority. No AI service or API key is involved.
 - **Looks:** seven themes chosen in Settings (`src/theme.js` lists them; the palettes are the `data-look` blocks at the end of `src/styles.css`). To add one, add an entry to `LOOKS` and a matching `:root[data-look="…"]` block.
+- **Repeating tasks:** type or say "every day", "every monday", "monthly" and so on, or pick Repeat when editing. Finishing one lines up the next (`nextDue` in `src/core.js`); undoing takes it back.
+- **Phone layout:** below 620px wide the tabs become a bar at the bottom and the header slims down. Swipe a task right to finish it, left to move it to tomorrow (`wireSwipe` in `src/main.js`).
 - **Storage:** IndexedDB on the device, through Dexie. There is no server and no account. Backups are JSON files the person saves and restores from Settings.
 - **Reminders:**
   - Android and iPhone: scheduled local notifications at each due time. They fire when the app is closed and carry **Done ✓** and **+1 hour** buttons.
