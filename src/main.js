@@ -609,7 +609,9 @@ function squarify(items,W,H){ // squarified treemap: items [{v}] -> same items w
 }
 function treemapHTML(list,now,t0){
   if(!list.length)return `<p class="rag-hint">Add tasks to see your task map.</p>`;
-  const W=1000,H=600;let items;
+  // the map is shorter when there are few categories; H keeps tiles roughly square on a phone-width panel (~340px)
+  const nCat=new Set(list.map(t=>t.cat)).size,px=nCat<=2?170:nCat<=4?230:300,W=1000,H=Math.round(W*px/340);
+  let items;
   {
     const m={};list.forEach(t=>{(m[t.cat]=m[t.cat]||[]).push(t)});
     items=Object.keys(m).map(c=>{
@@ -619,22 +621,28 @@ function treemapHTML(list,now,t0){
       return {v:arr.length,cat:c,name:c,sub:`${pct}% done`,sub2:od?`${od} overdue`:`${arr.length} task${arr.length>1?"s":""}`,
         bands:["r","a","g"].map(k=>({k,n:n[k]}))};
     }).sort((a,b)=>b.v-a.v||a.name.localeCompare(b.name));
+    // size by the square root of the task count, with a floor, so one big category can't squeeze the rest into slivers
+    const floor=Math.min(.18,.6/items.length);
+    items.forEach(it=>{it.v=Math.sqrt(it.v)});
+    const tot=items.reduce((s,it)=>s+it.v,0);
+    items.forEach(it=>{it.v=Math.max(it.v,floor*tot)});
   }
   const tiles=squarify(items,W,H).map((b,i)=>{
-    const small=b.w<170||b.h<100,label=`${b.name}: ${b.sub}${b.sub2?", "+b.sub2:""}`,
+    const wpx=b.w/W*340,hpx=b.h/H*px; // approximate size on a phone
+    const tiny=wpx<56||hpx<34,small=wpx<110||hpx<80,label=`${b.name}: ${b.sub}${b.sub2?", "+b.sub2:""}`,
       style=`left:${(b.x/W*100).toFixed(2)}%;top:${(b.y/H*100).toFixed(2)}%;width:${(b.w/W*100).toFixed(2)}%;height:${(b.h/H*100).toFixed(2)}%;--i:${Math.min(i,20)}`,
       inner=`<span class="nm">${esc(b.name)}</span>${small?"":`<span class="sb">${esc(b.sub)}${b.sub2?"<br>"+esc(b.sub2):""}</span>`}`;
     if(b.bands){
       const bands=b.bands.filter(x=>x.n).map(x=>`<i class="${x.k}" style="flex-grow:${x.n}"></i>`).join("");
-      return `<button class="tmap-tile bands-tile" style="${style}" data-tcat="${esc(b.cat)}" aria-label="${esc(label)}" title="${esc(label)}"><span class="bands">${bands}</span><span class="tlab">${inner}</span></button>`;
+      return `<button class="tmap-tile bands-tile${small?" small":""}" style="${style}" data-tcat="${esc(b.cat)}" aria-label="${esc(label)}" title="${esc(label)}"><span class="bands">${bands}</span>${tiny?"":`<span class="tlab">${inner}</span>`}</button>`;
     }
     return b.cat
       ?`<button class="tmap-tile ${b.k}" style="${style}" data-tcat="${esc(b.cat)}" aria-label="${esc(label)}" title="${esc(label)}">${inner}</button>`
       :`<div class="tmap-tile ${b.k}${b.k==="g"&&b.sub==="Done"?" done":""}" style="${style}" role="img" aria-label="${esc(label)}" title="${esc(label)}">${inner}</div>`;
   }).join("");
-  return `<div class="tm-wrap"><div class="tmap" role="group" aria-label="Categories">${tiles}</div>
+  return `<div class="tm-wrap"><div class="tmap" role="group" aria-label="Categories" style="height:${px}px">${tiles}</div>
     <div class="hm-legend"><span><i style="background:var(--danger)"></i>Red · overdue</span><span><i style="background:var(--amber)"></i>Amber · due today or at risk</span><span><i style="background:var(--ok)"></i>Green · on track or done</span></div>
-    <p class="rag-hint" style="margin:8px 0 0">Tile size is the number of tasks. Each tile is split into red, amber and green by its tasks. Tap a category to see its tasks.</p></div>`;
+    <p class="rag-hint" style="margin:8px 0 0">Bigger tiles have more tasks. Each tile is split into red, amber and green by its tasks. Tap a category to see its tasks.</p></div>`;
 }
 /* One colour per task: Green = done, or open and on track · Amber = open and due today, Important, or on a day
    with 3+ open tasks · Red = open and past its time. A day's square is split by how many tasks are in each. */
