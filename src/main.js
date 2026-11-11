@@ -343,6 +343,13 @@ function renderDash(list,now,t0){
       const col=tok(b.classList.contains("r")?"--danger":b.classList.contains("a")?"--accent":"--ok");burst(r.left+r.width/2,r.top+r.height/2,10,[col,col,tok("--ink")],.5)}
     $("#hm-detail").innerHTML=hmDetail(view(),Date.now(),sod(Date.now()).getTime());
   });
+  const hw=el.querySelector(".hm-wrap");
+  if(hw){
+    if(hmScroll===null){const td=hw.querySelector(".hm-cell.today"),lb=hw.querySelector(".hm-lbl");if(td&&lb)hmScroll=Math.max(0,td.offsetLeft-lb.offsetWidth-3*(td.offsetWidth+4)-8)}
+    hw.scrollLeft=hmScroll||0;
+    const sw=el.querySelector("#hmSwipe");if(sw)sw.hidden=hw.scrollWidth<=hw.clientWidth+2;
+    hw.addEventListener("scroll",()=>{hmScroll=hw.scrollLeft},{passive:true});
+  }
   const rs=el.querySelector("#ragSum");
   if(rs)rs.addEventListener("click",e=>{
     const b=e.target.closest("[data-rag]");if(!b)return;
@@ -473,6 +480,7 @@ function renderPlan(list,now,t0){
    today     : open & past its time = Red, open later today = Amber, all done = Green
    upcoming  : 3+ tasks or any Important = Amber (heavy / at risk), otherwise Green
    category  : Red if anything overdue, Amber if something due within 48 h, otherwise Green */
+let hmScroll=null;
 let hmSel=null,hmReview=null; // hmReview: {color:"r"|"a"|"g", idx, total}
 const RAGW={r:"Red",a:"Amber",g:"Green"};
 function cellStatus(arr,s,now,t0){
@@ -499,19 +507,20 @@ function heatmapHTML(list,now,t0,names){
   h+=`<span></span>`+days.map((s,i)=>{const d=new Date(s);return `<span class="hm-h${s===t0?" now":""}" style="--w:${i}">${s===t0?"<span>Today</span>":d.toLocaleDateString("en-IN",{weekday:"narrow"})+"<br>"+d.getDate()}</span>`}).join("");
   rows.forEach(([c,arr],ri)=>{
     const cs=catStatus(arr,now);
-    h+=`<span class="hm-lbl${ri===0?" all":""}" style="--w:${ri}"><span class="dot ${cs}" title="${RAGW[cs]}"></span><span class="nm"${ri?` style="color:${cc(c)}"`:""}>${esc(ri?c:"All tasks")}</span></span>`;
+    const win=arr.filter(t=>t.due>=days[0]&&t.due<days[13]+DAY),rowPct=win.length?Math.round(win.filter(t=>t.done).length/win.length*100):null;
+    h+=`<span class="hm-lbl${ri===0?" all":""}" style="--w:${ri}"><span class="dot ${cs}" title="${RAGW[cs]}"></span><span class="nm"${ri?` style="color:${cc(c)}"`:""}>${esc(ri?c:"All tasks")}</span>${rowPct===null?"":`<span class="rp mono" title="${rowPct}% of these two weeks' tasks done">${rowPct}%</span>`}</span>`;
     days.forEach((s,ci)=>{
       const day=arr.filter(t=>t.due>=s&&t.due<s+DAY),st=cellStatus(day,s,now,t0);
-      const k=day.length>=4?95:day.length===3?80:day.length===2?62:45;
+      const pct=day.length?Math.round(day.filter(t=>t.done).length/day.length*100):0;
       const sel=hmSel&&hmSel.cat===c&&hmSel.s===s;
-      const lbl=`${ri?c:"All"}, ${new Date(s).toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"})}: ${day.length?day.length+" task"+(day.length>1?"s":"")+", "+RAGW[st]:"nothing due"}`;
-      h+=`<button class="hm-cell ${st||"n"}${s<t0?" past":""}${s===t0?" today":""}${sel?" sel":""}" style="--k:${k}%;--w:${ri+ci}" data-c="${esc(c)}" data-s="${s}" aria-label="${esc(lbl)}" title="${esc(lbl)}"${st?"":" tabindex=\"-1\""}></button>`;
+      const lbl=`${ri?c:"All"}, ${new Date(s).toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"})}: ${day.length?day.length+" task"+(day.length>1?"s":"")+", "+pct+"% done, "+RAGW[st]:"nothing due"}`;
+      h+=`<button class="hm-cell ${st||"n"}${s<t0?" past":""}${s===t0?" today":""}${sel?" sel":""}" style="--w:${ri+ci}" data-c="${esc(c)}" data-s="${s}" aria-label="${esc(lbl)}" title="${esc(lbl)}"${st?"":" tabindex=\"-1\""}>${st?`<span>${pct===100?"✓":pct}</span>`:""}</button>`;
     });
     if(ri===0)h+=`<span class="hm-sep"></span>`;
   });
   h+=`</div></div>
   <div class="hm-legend"><span><i style="background:var(--danger)"></i>Missed or overdue</span><span><i style="background:var(--accent)"></i>Due today or a heavy day</span><span><i style="background:var(--ok)"></i>Done or on track</span>
-    <span class="ramp">fewer <i style="background:color-mix(in srgb,var(--muted) 45%,var(--sunk))"></i><i style="background:color-mix(in srgb,var(--muted) 62%,var(--sunk))"></i><i style="background:color-mix(in srgb,var(--muted) 80%,var(--sunk))"></i><i style="background:var(--muted)"></i> more</span></div>
+<span class="ramp">Number = % done · ✓ = all done</span><span id="hmSwipe" hidden style="flex-basis:100%">Swipe the grid sideways for earlier and later days.</span></div>
   <div class="hm-detail" id="hm-detail">${hmDetail(list,now,t0)}</div>`;
   return h;
 }
