@@ -17,6 +17,8 @@ const GUESS=[
  ["Learning",/\b(learn|course|read|book|certif|study|tutorial|practice|exam|udemy|coursera|leetcode)\b/i],
  ["Home",/\b(clean|fix|repair|plumber|electrician|gas|cylinder|laundry|maid|cook|kitchen|house|garden|water|maintenance|society)\b/i],
 ];
+GUESS.push(["Personal",/\b(mom|mum|mother|amma|appa|dad|father|wife|husband|son|daughter|friend|birthday|anniversary|family|temple|pooja|puja)\b/i]);
+GUESS.find(g=>g[0]==="Work")[1]=new RegExp(GUESS.find(g=>g[0]==="Work")[1].source.replace("client|","client|timesheet|interview|presentation|"),"i");
 function guessCat(text){for(const [c,re] of GUESS) if(re.test(text)) return c; return "Inbox"}
 function titleCase(s){s=String(s).trim();return s.charAt(0).toUpperCase()+s.slice(1)}
 function catVar(c){
@@ -105,4 +107,49 @@ function sampleTasks(){
 }
 
 
-export { esc, uid, DAY, sod, PALETTE, KNOWN, GUESS, guessCat, titleCase, catVar, cc, MON, WD, parseWhen, mkDate, parseQuick, fmtDue, toLocalInput, sampleTasks };
+/* ---------- dictation: one spoken paragraph → several tasks ---------- */
+const VERBS="pay|call|buy|send|book|email|mail|remind|schedule|renew|pick|get|finish|submit|review|clean|fix|order|check|prepare|meet|go|take|write|read|file|update|complete|plan|visit|drop|collect|message|text|ask|cancel|return|print|sign|transfer|recharge|refill|wash|cook|make|bring|share|upload|download|install|register|apply|confirm|follow|ring|reply|respond|draft|deploy|test|study|practice|practise|exercise|walk|water|feed|arrange|organise|organize|set|start|do";
+const LEADIN=/^(?:(?:and|also|then|next|plus|ok|okay|so|um|uh)\s+)*(?:please\s+)?(?:(?:can you\s+)?remind me (?:to|about)|i (?:need|have|want|would like|ought|got)(?: got)? to|i (?:should|must|gotta)|i'?ve got to|don'?t (?:let me )?forget to|do not forget to|make sure (?:i|to)|remember to|(?:add|create|make|new|another)(?: a| an| one)?(?: new)? (?:task|reminder|to-?do)(?: (?:to|for|called|saying|that says))?|we (?:need|have) to|need to|have to|to)\s+/i;
+function normaliseSpeech(text){
+  return String(text||"")
+    .replace(/\b([ap])\.\s?m\.?/gi,"$1m")                 // 5 p.m. → 5 pm
+    .replace(/\b(\d{1,2})\s*o'?\s?clock\b/gi,"at $1")      // 6 o'clock → at 6
+    .replace(/\bday after tomorrow\b/gi,"in 2 days")
+    .replace(/\b(?:at )?noon\b/gi,"12pm").replace(/\b(?:at )?midnight\b/gi,"11:59pm")
+    .replace(/\bthis (morning|evening)\b/gi,"today $1")
+    .replace(/\bhalf past (\d{1,2})\b/gi,"$1:30").replace(/\bquarter past (\d{1,2})\b/gi,"$1:15")
+    .replace(/\b(\d{1,2})(?:st|nd|rd|th)?\s+of\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/gi,"$1 $2")   // 20th of November
+    .replace(/\b(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\b(?!\s+(?:of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))/gi,(m,d)=>{ // "on the 1st" → next such date
+      const n=new Date(),x=new Date(n.getFullYear(),n.getMonth(),+d);if(+d<1||+d>31)return m;
+      if(x<sod(n))x.setMonth(x.getMonth()+1);return x.getDate()+" "+MON[x.getMonth()]+" "+x.getFullYear()})
+    .replace(/\s+/g," ").trim();
+}
+/* Splits on sentence ends, on cue words ("then", "also", "next", "new task"), and on "and" or a comma
+   only when an action follows ("…tomorrow and call the plumber"), so "buy bread and milk" stays one task. */
+function splitDictation(text){
+  const t=normaliseSpeech(text);
+  if(!t)return [];
+  const mark=t
+    .replace(/[.;!?\n]+\s*/g," ¦ ")
+    .replace(/\s*,?\s*\b(?:and then|after that|and also|then|also|next task|new task|another task|next|plus)\b,?\s+/gi," ¦ ")
+    .replace(new RegExp("\\s*(?:,\\s*and|,|\\band)\\s+(?=(?:(?:i|we)\\s+(?:need|have|want|should|must)\\b|remind me\\b|don'?t forget\\b|remember to\\b|(?:"+VERBS+")\\b))","gi")," ¦ ");
+  return mark.split("¦").map(x=>x.trim()).filter(x=>x.replace(/[^\p{L}\p{N}]/gu,"").length>1);
+}
+/* cats: category names the person already uses, so "under work" / "category home" can be heard. */
+function parseDictation(text,cats=[]){
+  const known=[...new Set([...Object.keys(KNOWN),...cats])].filter(c=>c!=="Inbox");
+  const catRe=known.length?new RegExp("\\b(?:(?:under|category|tag|hashtag|hash tag|label|in)\\s+(?:the\\s+)?("+known.map(c=>c.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")+")(?:\\s+(?:category|list|tag))?|("+known.map(c=>c.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")+")\\s+category)\\b","i"):null;
+  return splitDictation(text).map(piece=>{
+    let p=piece,cat=null,pri=0,prev;
+    do{prev=p;p=p.replace(LEADIN,"")}while(p!==prev);
+    if(catRe)p=p.replace(catRe,(m,a,b)=>{const hit=(a||b).toLowerCase();cat=known.find(c=>c.toLowerCase()===hit);return " "});
+    p=p.replace(/\b(?:(?:and\s+)?(?:it'?s|it is|that'?s|this is|mark (?:it|this)(?: as)?|make (?:it|this))\s+)?(?:very |really |super )?(?:important|urgent|high priority|top priority)\b/gi,()=>{pri=1;return " "});
+    const q=parseQuick(p.replace(/\s+/g," ").trim()+(cat?" #"+cat.replace(/\s+/g,"-"):""));
+    let ttl=q.title.replace(/^(?:and|to)\s+/i,""),was;
+    do{was=ttl;ttl=ttl.replace(/[\s,]+$/,"").replace(/\s+(?:for|on|at|by|every|this|the|before|until|till|in|of|and|to)$/i,"")}while(ttl!==was); // words left dangling once the date is taken out
+    const title=titleCase(ttl);
+    return {title,due:q.due,cat:cat||q.cat,catGuessed:!cat&&q.catGuessed,pri:pri||q.pri};
+  }).filter(x=>x.title.length>1&&!/^(?:um+|uh+|er+|hmm+|ok|okay|so|and|then|yeah|yes|right|that'?s (?:it|all))$/i.test(x.title));
+}
+
+export { esc, uid, DAY, sod, PALETTE, KNOWN, GUESS, guessCat, titleCase, catVar, cc, MON, WD, parseWhen, mkDate, parseQuick, fmtDue, toLocalInput, sampleTasks, normaliseSpeech, splitDictation, parseDictation };

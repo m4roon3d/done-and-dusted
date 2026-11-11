@@ -7,7 +7,8 @@ import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/instrument-serif/400-italic.css";
 import "./styles.css";
 import JSZip from "jszip";
-import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks } from "./core.js";
+import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation } from "./core.js";
+import { dictationSupported, startDictation } from "./speech.js";
 import { loadAll, putTask, putTasks, deleteTask, migrateFromLocalStorage, requestPersist } from "./store.js";
 import { isNative, saveFile, haptic, initNativeShell, onResume } from "./platform.js";
 import { initNotifications, scheduleSync, webNotify } from "./notify.js";
@@ -144,6 +145,80 @@ $("#addForm").addEventListener("submit",e=>{
   toast({t:"Added",s:`${titleCase(p.title)}${p.due?" · "+fmtDue(p.due):""}`,ttl:2500});
   setView("tasks");
 });
+
+/* ---------- dictation: speak several tasks, review, add ---------- */
+const dict={open:false,listening:false,text:"",items:[],session:null,note:""};
+const micBtn=$("#mic"),dictEl=$("#dict");
+dictationSupported().then(ok=>{micBtn.hidden=!ok});
+micBtn.onclick=()=>{dict.listening?stopListening():startListening()};
+function reparse(){dict.items=parseDictation(dict.text,[...new Set(tasks.map(t=>t.cat))])}
+async function startListening(){
+  if(dict.listening)return;
+  const keep=dict.open?dict.text:"";
+  dict.open=true;dict.listening=true;dict.note="";dict.text=keep;reparse();drawDict();haptic();
+  micBtn.classList.add("live");micBtn.setAttribute("aria-label","Stop dictating");
+  dict.session=await startDictation({
+    onText:t=>{dict.text=(keep?keep+" ":"")+t;reparse();drawDict(true)},
+    onEnd:why=>{
+      dict.listening=false;dict.session=null;micBtn.classList.remove("live");micBtn.setAttribute("aria-label","Dictate tasks");
+      dict.note=why==="denied"?"The microphone is blocked. Allow microphone access for Done & Dusted in your "+(isNative?"phone's app settings":"browser's site settings")+", then tap the mic again."
+        :why==="error"?"Couldn't hear that. Check your connection and tap the mic to try again."
+        :!dict.text?"Didn't catch anything. Tap the mic and try again.":"";
+      drawDict();
+    }});
+}
+function stopListening(){dict.session&&dict.session.stop()}
+function closeDict(){stopListening();dict.open=false;dict.text="";dict.items=[];dict.note="";dictEl.hidden=true;dictEl.innerHTML=""}
+function drawDict(liveOnly){
+  if(!dict.open){dictEl.hidden=true;return}
+  dictEl.hidden=false;
+  const cards=dict.items.map((x,i)=>`<div class="dcard" style="--cc:${cc(x.cat)};--d:${Math.min(i,8)}"><span class="cdot"></span><div class="body"><div class="t">${x.pri?'<span class="cflag">! </span>':""}${esc(x.title)}</div>
+      <div class="meta"><span class="cat">${esc(x.cat)}${x.catGuessed&&x.cat!=="Inbox"?" (guessed)":""}</span><span>${x.due?"⏰ "+esc(fmtDue(x.due)):"No date"}</span>${x.pri?'<span class="flag">● Important</span>':""}</div></div>
+      ${dict.listening?"":`<button class="more" data-drop="${i}" aria-label="Remove this task">✕</button>`}</div>`).join("");
+  // while listening, only the transcript and cards change, so the text box keeps its cursor when editing afterwards
+  if(liveOnly&&dictEl.querySelector("#dictLive")){
+    dictEl.querySelector("#dictLive").textContent=dict.text||"Listening…";
+    dictEl.querySelector("#dictCards").innerHTML=cards;
+    dictEl.querySelector("#dictCount").textContent=dict.items.length?`${dict.items.length} task${dict.items.length>1?"s":""} heard`:"";
+    return;
+  }
+  const n=dict.items.length;
+  dictEl.innerHTML=`<div class="dict-head">${dict.listening
+      ?`<span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><b>Listening</b><span class="mono" id="dictCount">${n?`${n} task${n>1?"s":""} heard`:""}</span>`
+      :`<b>${n?"Check what I heard":"Dictate tasks"}</b><span class="mono" id="dictCount"></span>`}
+      <button class="btn sm" id="dictClose">Cancel</button></div>
+    ${dict.listening
+      ?`<p class="dict-live" id="dictLive">${esc(dict.text)||"Listening…"}</p><p class="dict-tip">Say several in one go: “Pay the electricity bill tomorrow at 6 pm, then call the plumber on Friday. It's important.”</p>`
+      :`<textarea class="dict-text" id="dictText" rows="3" aria-label="What was heard. Edit to correct it." placeholder="Tap the mic and speak, or type here">${esc(dict.text)}</textarea>`}
+    ${dict.note?`<p class="rem-p warnline">${esc(dict.note)}</p>`:""}
+    <div class="dcards" id="dictCards">${cards}</div>
+    <div class="acts">${dict.listening
+      ?`<button class="btn pri" id="dictStop">Done speaking</button>`
+      :`<button class="btn pri" id="dictAdd"${n?"":" disabled"}>Add ${n||""} task${n===1?"":"s"}</button><button class="btn" id="dictMore">🎤 Say more</button>`}</div>`;
+  $("#dictClose").onclick=closeDict;
+  if(dict.listening){$("#dictStop").onclick=stopListening;return}
+  const ta=$("#dictText");
+  ta.oninput=()=>{dict.text=ta.value;reparse();
+    $("#dictCards").innerHTML=dict.items.map((x,i)=>`<div class="dcard" style="--cc:${cc(x.cat)}"><span class="cdot"></span><div class="body"><div class="t">${x.pri?'<span class="cflag">! </span>':""}${esc(x.title)}</div><div class="meta"><span class="cat">${esc(x.cat)}</span><span>${x.due?"⏰ "+esc(fmtDue(x.due)):"No date"}</span>${x.pri?'<span class="flag">● Important</span>':""}</div></div></div>`).join("");
+    const b=$("#dictAdd"),k=dict.items.length;b.disabled=!k;b.textContent=`Add ${k||""} task${k===1?"":"s"}`};
+  $("#dictMore").onclick=startListening;
+  $("#dictCards").onclick=e=>{const b=e.target.closest("[data-drop]");if(!b)return;dict.items.splice(+b.dataset.drop,1);drawDictAfterDrop()};
+  $("#dictAdd").onclick=()=>{
+    const now=Date.now(),list=dict.items.map((x,i)=>({id:uid()+i,title:x.title,cat:x.cat,due:x.due,pri:x.pri,done:false,doneAt:null,createdAt:now+i,src:"voice"}));
+    if(!list.length)return;
+    if(examples)animIn=true;
+    burstAt("#dictAdd",20);haptic("success");
+    lastAdded=list[list.length-1].id;
+    closeDict();saveMany(list);
+    toast({t:`Added ${list.length} task${list.length>1?"s":""}`,s:list.slice(0,3).map(t=>t.title).join(", ")+(list.length>3?"…":""),ttl:3500});
+    setView("tasks");
+  };
+}
+function drawDictAfterDrop(){ // a card was removed by hand: keep the remaining cards as they are
+  const keep=dict.items.slice();drawDict();dict.items=keep;
+  const n=keep.length,b=$("#dictAdd");if(b){b.disabled=!n;b.textContent=`Add ${n||""} task${n===1?"":"s"}`}
+  $("#dictCards").innerHTML=keep.map((x,i)=>`<div class="dcard" style="--cc:${cc(x.cat)}"><span class="cdot"></span><div class="body"><div class="t">${x.pri?'<span class="cflag">! </span>':""}${esc(x.title)}</div><div class="meta"><span class="cat">${esc(x.cat)}</span><span>${x.due?"⏰ "+esc(fmtDue(x.due)):"No date"}</span>${x.pri?'<span class="flag">● Important</span>':""}</div></div><button class="more" data-drop="${i}" aria-label="Remove this task">✕</button></div>`).join("");
+}
 
 /* ---------- views ---------- */
 document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
@@ -843,6 +918,7 @@ initNotifications((action,id)=>{
 initNativeShell({onBack:()=>{
   if(!$("#sheet").hidden){closeSheet();return true}
   if(!$("#pop").hidden){closeDayPop();return true}
+  if(dict.open){closeDict();return true}
   if(picked){picked=null;render();return true}
   if(openEdit){openEdit=null;render();return true}
   if(currentView!=="tasks"){setView("tasks");return true}

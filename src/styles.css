@@ -533,3 +533,29 @@ button.rag-pill:active{transform:scale(.96)}
 #popBody .mixline .mix{min-height:12px;height:12px;border-radius:6px}
 #popBody .list{background:var(--surface)}
 #popBody .row{grid-template-columns:auto 1fr auto}
+
+/* ---- dictation ---- */
+.add .mic{background:transparent;color:var(--ink);border:1.5px solid var(--line);width:42px;height:42px;padding:0;border-radius:12px;display:grid;place-items:center;flex:none;position:relative}
+.add .mic svg{width:20px;height:20px}
+.add .mic.live{background:var(--danger);border-color:var(--danger);color:var(--surface);animation:latering 1.4s ease-out infinite}
+.dict{background:var(--surface);border:1.5px solid var(--accent);border-radius:18px;padding:14px;margin-top:10px;display:grid;gap:10px;animation:rise .3s cubic-bezier(.2,.8,.2,1) both}
+.dict-head{display:flex;align-items:center;gap:10px}
+.dict-head b{font-family:var(--f-display);font-size:1.05rem}
+.dict-head .mono{color:var(--muted);margin-right:auto}
+.dict-head .btn{margin-left:auto}
+.dict-head .mono+.btn{margin-left:0}
+.wave{display:inline-flex;align-items:center;gap:3px;height:22px}
+.wave i{width:4px;height:100%;border-radius:2px;background:var(--danger);transform-origin:center;animation:wave 1s ease-in-out infinite}
+.wave i:nth-child(2){animation-delay:.12s}.wave i:nth-child(3){animation-delay:.24s}.wave i:nth-child(4){animation-delay:.36s}.wave i:nth-child(5){animation-delay:.48s}
+@keyframes wave{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+.dict-live{margin:0;font-size:1.05rem;line-height:1.45;min-height:1.5em;overflow-wrap:anywhere}
+.dict-tip{margin:0;font-size:.8rem;color:var(--muted)}
+.dict-text{width:100%;border:1.5px solid var(--line);border-radius:12px;background:var(--bg);padding:10px 12px;font-size:.98rem;resize:vertical;min-height:84px}
+.dcards{display:grid;gap:6px}
+.dcards:empty{display:none}
+.dcard{display:flex;gap:10px;align-items:flex-start;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:9px 11px;box-shadow:inset 4px 0 0 var(--cc);animation:chipin .3s cubic-bezier(.3,1.4,.5,1) backwards;animation-delay:calc(var(--d,0) * 40ms)}
+.dcard .cdot{width:9px;height:9px;border-radius:50%;background:var(--cc);flex:none;margin-top:7px}
+.dcard .body{min-width:0;flex:1}
+.dcard .cflag{color:var(--danger);font-weight:800}
+.dict .acts{display:flex;gap:8px;flex-wrap:wrap}
+.dict .btn:disabled{opacity:.5;cursor:default}

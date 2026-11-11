@@ -14,6 +14,7 @@ One codebase, three ways to ship it:
 
 - **Web app:** plain JavaScript modules bundled with Vite. No framework.
 - **Native apps:** [Capacitor 8](https://capacitorjs.com) wraps the same web app in a native shell and gives it phone features.
+- **Dictation:** the mic button turns speech into text with the phone's recogniser (native) or the browser's (web: Chrome, Edge, Safari). `parseDictation` in `src/core.js` then splits it into tasks with dates, categories and priority. No AI service or API key is involved.
 - **Storage:** IndexedDB on the device, through Dexie. There is no server and no account. Backups are JSON files the person saves and restores from Settings.
 - **Reminders:**
   - Android and iPhone: scheduled local notifications at each due time. They fire when the app is closed and carry **Done ✓** and **+1 hour** buttons.
@@ -25,6 +26,7 @@ src/main.js             screens: Tasks, Plan, Dashboard, Import
 src/core.js             date parsing, categories, formatting (no DOM, unit-tested)
 src/store.js            IndexedDB storage, backup and restore
 src/notify.js           reminders (native and web)
+src/speech.js           dictation: speech to text (native and web)
 src/platform.js         web vs. native differences: file saving, haptics, back button
 src/settings.js         Settings sheet and the Dashboard reminders panel
 src/styles.css          all styling and animation
@@ -79,7 +81,7 @@ npx capacitor-assets generate --ios --iconBackgroundColor '#E39A14' --splashBack
 npm run ios            # opens Xcode → choose a device → Run
 ```
 
-No code changes are needed. Storage, reminders, backup sharing and haptics already go through Capacitor plugins that support iOS, and the layout respects the notch and home indicator. iOS keeps at most 64 pending notifications per app, so the app schedules the 60 soonest tasks and tops up whenever it opens.
+Add two lines to `ios/App/App/Info.plist` for dictation: `NSSpeechRecognitionUsageDescription` and `NSMicrophoneUsageDescription`, each with a short reason such as "Used to dictate tasks". No other code changes are needed. Storage, reminders, backup sharing and haptics already go through Capacitor plugins that support iOS, and the layout respects the notch and home indicator. iOS keeps at most 64 pending notifications per app, so the app schedules the 60 soonest tasks and tops up whenever it opens.
 
 ## After changing the web code
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseQuick, parseWhen, guessCat, fmtDue } from "../src/core.js";
+import { parseQuick, parseWhen, guessCat, fmtDue, splitDictation, parseDictation } from "../src/core.js";
 import { readBackup } from "../src/store.js";
 
 const NOW = new Date(2026, 10, 11, 9, 0); // Wed 11 Nov 2026, 9:00
@@ -37,4 +37,28 @@ test("backup: rejects junk and newer formats", () => {
   assert.throws(() => readBackup("not json"));
   assert.throws(() => readBackup(JSON.stringify({ tasks: [] })));
   assert.throws(() => readBackup(JSON.stringify({ format: 99, tasks: [{ id: "a", title: "T" }] })));
+});
+
+test("dictation: several tasks in one breath", () => {
+  const r = parseDictation("Remind me to pay the electricity bill tomorrow at 6 p.m. and call the plumber on Friday, also I need to buy bread and milk");
+  assert.deepEqual(r.map((x) => x.title), ["Pay the electricity bill", "Call the plumber", "Buy bread and milk"]);
+  assert.equal(r[0].cat, "Finance");
+  assert.equal(new Date(r[0].due).getHours(), 18);
+  assert.ok(r[1].due);
+  assert.equal(r[2].due, null);
+});
+test("dictation: 'and' inside one task does not split it", () => {
+  assert.equal(splitDictation("buy bread and milk").length, 1);
+  assert.equal(splitDictation("send the report to Ravi and Priya").length, 1);
+});
+test("dictation: spoken category and priority", () => {
+  const r = parseDictation("book flight tickets under work it's important. Then renew car insurance by 20th November");
+  assert.equal(r.length, 2);
+  assert.deepEqual([r[0].title, r[0].cat, r[0].pri], ["Book flight tickets", "Work", 1]);
+  assert.equal(r[1].title, "Renew car insurance");
+  assert.equal(new Date(r[1].due).getDate(), 20);
+});
+test("dictation: empty and filler input", () => {
+  assert.deepEqual(parseDictation(""), []);
+  assert.deepEqual(parseDictation("um"), []);
 });
