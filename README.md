@@ -56,7 +56,7 @@ Serve it over HTTPS. Offline support, installing to the home screen and notifica
 
 ## Android app
 
-**Without installing anything:** push to `main`. The **Android APK** job in `.github/workflows/build.yml` builds the app and publishes it as the **latest** release. On your phone, open the repository's *Releases* page, download `done-and-dusted.apk` and open it to install.
+**Without installing anything:** in the repository's *Actions* tab, open **Build** and press **Run workflow** (or push a tag such as `v1.0.1`). The **Android APK** job builds the app and publishes it as the **latest** release. It no longer runs on every push, to save build minutes. On your phone, open the repository's *Releases* page, download `done-and-dusted.apk` and open it to install.
 
 **On your computer:** needs Android Studio (with SDK 36) and JDK 21.
 

@@ -1,10 +1,13 @@
 name: Build
 
+# Runs only when asked, to save build minutes:
+#   - Actions tab → Build → "Run workflow", or
+#   - push a version tag, e.g.  git tag v1.0.1 && git push origin v1.0.1
+# The web app does not need this workflow: Render deploys it on every push to main.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
+  push:
+    tags: ["v*"]
 
 permissions:
   contents: write   # lets the Android job publish the APK as a release
@@ -48,7 +51,6 @@ jobs:
           name: done-and-dusted-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
       - name: Publish APK as the "latest" release
-        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
