@@ -7,9 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write   # lets the Android job publish the APK as a release
 
 concurrency:
   group: build-${{ github.ref }}
@@ -28,21 +26,6 @@ jobs:
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with: { name: web-dist, path: dist }
-      - if: github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
-        with: { path: dist }
-
-  pages:
-    name: Publish web app (GitHub Pages)
-    needs: web
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - id: deploy
-        uses: actions/deploy-pages@v4
 
   android:
     name: Android APK
@@ -64,3 +47,14 @@ jobs:
         with:
           name: done-and-dusted-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish APK as the "latest" release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk done-and-dusted.apk
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest done-and-dusted.apk \
+            --target "$GITHUB_SHA" \
+            --title "Latest Android build" \
+            --notes "Debug build from commit ${GITHUB_SHA::7}. Download done-and-dusted.apk on your phone and open it to install."
