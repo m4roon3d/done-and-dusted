@@ -1,0 +1,30 @@
+{
+  "appId": "app.doneanddusted",
+  "appName": "Done & Dusted",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#EEF1F4"
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#EEF1F4"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "launchShowDuration": 3000,
+      "backgroundColor": "#EEF1F4",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP"
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_dd",
+      "iconColor": "#E39A14"
+    },
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "DEFAULT"
+    }
+  }
+}

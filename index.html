@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Done &amp; Dusted</title>
+<meta name="description" content="Plan it, do it, dust it. Tasks with Google Keep import, reminders, a red/amber/green dashboard and week planning.">
+<meta name="theme-color" content="#EEF1F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E141A" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Done&amp;Dusted">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="brand" id="brand" aria-label="Done and Dusted">
+        <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+          <rect class="tile-bg" x="3" y="5" width="36" height="36" rx="10" transform="rotate(-6 21 23)"/>
+          <path class="tk" d="M12 23.5l6.5 6.5L31 16"/>
+          <circle class="puff p1" cx="38" cy="12" r="3.2"/><circle class="puff p2" cx="43" cy="7.5" r="2.4"/><circle class="puff p3" cx="44.5" cy="15" r="1.8"/>
+        </svg>
+        <div><div class="wm"><span class="w1">Done</span> <span class="amp">&amp;</span> <span class="w2">Dusted</span></div>
+        <div class="tagline">Plan it · Do it · <b>Dust it</b></div></div>
+      </div>
+      <div class="today" id="greet">Loading your tasks…</div>
+      <div class="sync" id="sync">This device</div>
+    </div>
+    <div class="hdr-r">
+      <button class="gear" id="gear" aria-label="Settings and backup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    </div>
+  </header>
+
+  <form class="add" id="addForm" autocomplete="off">
+    <input id="quick" placeholder="Pay electricity bill tomorrow 6pm #Home !" aria-label="Add a task">
+    <button type="submit">Add</button>
+  </form>
+  <div class="parse" id="parse"><span>Type naturally. <b>#Category</b>, a date like <b>fri 5pm</b> or <b>15 nov</b>, and <b>!</b> for important.</span></div>
+
+  <div class="switch">
+    <div class="seg" role="tablist">
+      <button role="tab" id="tab-tasks" aria-selected="true" data-view="tasks">Tasks</button>
+      <button role="tab" id="tab-plan" aria-selected="false" data-view="plan">Plan</button>
+      <button role="tab" id="tab-dash" aria-selected="false" data-view="dash">Dashboard</button>
+      <button role="tab" id="tab-import" aria-selected="false" data-view="import">Import</button>
+    </div>
+  </div>
+
+  <main>
+    <section id="v-tasks"></section>
+    <section id="v-plan" hidden></section>
+    <section id="v-dash" hidden></section>
+    <section id="v-import" hidden>
+      <div class="drop" id="drop">
+        <h4>Bring your Google Keep notes in</h4>
+        <p>Drop your Keep export here. Labels become categories; checklists become separate tasks; dates in the text become due dates.</p>
+        <input type="file" id="file" accept=".zip,.json,.html,.htm,.txt" multiple hidden>
+        <button class="btn pri" id="pick">Choose Keep export</button>
+        <ol class="steps" style="text-align:left;max-width:460px;margin-inline:auto">
+          <li>Open <b>takeout.google.com</b>, click <b>Deselect all</b>, tick only <b>Keep</b>.</li>
+          <li>Create the export and download the <b>.zip</b> Google emails you.</li>
+          <li>Upload the .zip here as is. Single .json or .html notes work too.</li>
+        </ol>
+      </div>
+      <div class="panel">
+        <h4>Or paste notes <small>one task per line · a line ending in ":" starts a category</small></h4>
+        <textarea class="paste" id="paste" placeholder="Home:&#10;☐ Fix kitchen tap by sat&#10;☐ Renew gas cylinder booking&#10;Work:&#10;- Send SOW draft to client 12 nov"></textarea>
+        <div style="margin-top:8px"><button class="btn" id="pasteGo">Read pasted notes</button></div>
+      </div>
+      <div id="preview"></div>
+    </section>
+  </main>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<canvas id="fx" aria-hidden="true"></canvas>
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet-card">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="sheetTitle">Settings</h2><button class="btn sm" id="sheetClose">Close</button></div>
+    <div id="sheetBody"></div>
+  </div>
+</div>
+<input type="file" id="restoreFile" accept=".json,application/json" hidden>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

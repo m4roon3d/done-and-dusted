@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+# Capacitor copies the web build into the native projects on every sync
+android/app/src/main/assets/public/
+ios/App/App/public/
+# signing keys never go in the repo
+*.jks
+*.keystore
+keystore.properties
