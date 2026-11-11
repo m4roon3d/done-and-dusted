@@ -12,6 +12,7 @@ import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/fredoka";
 import "@fontsource-variable/outfit";
 import "@fontsource-variable/karla";
+import "@fontsource/gochi-hand/400.css"; // the splash's hand-written "A-CHOO!"
 import "./styles.css";
 import { applyLook, onSystemThemeChange } from "./theme.js";
 applyLook(); // before anything draws
@@ -26,6 +27,15 @@ import { remindersPanelHTML, wireRemindersPanel, openSheet, closeSheet, initShee
 
 
 const $=s=>document.querySelector(s);
+/* doodle splash (markup and timing live in index.html): tap to skip; removed once it has faded */
+{const sp=document.getElementById("splash");
+  if(sp){
+    if(document.documentElement.classList.contains("no-splash"))sp.remove();
+    else{
+      sp.addEventListener("click",()=>sp.classList.add("bye"),{once:true});
+      sp.addEventListener("animationend",e=>{if(e.target===sp&&e.animationName==="sp-out")sp.remove()});
+    }
+  }}
 /* ---------- storage (IndexedDB on this device) ---------- */
 let tasks=[],examples=false,loaded=false,persisted=null;
 function lsGet(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
