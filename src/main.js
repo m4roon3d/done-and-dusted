@@ -173,6 +173,7 @@ function render(){
   if(currentView==="tasks") renderTasks(list,now,t0);
   if(currentView==="dash") renderDash(list,now,t0);
   if(currentView==="plan") renderPlan(list,now,t0);
+  if(!$("#pop").hidden)drawDayPop(); // keep an open day pop-up in step with changes
   if(loaded)animIn=false;
 }
 
@@ -336,12 +337,10 @@ function renderDash(list,now,t0){
   if(hm)hm.addEventListener("click",e=>{
     const b=e.target.closest(".hm-cell");if(!b||b.classList.contains("n"))return;
     const pick={cat:b.dataset.c,s:+b.dataset.s};
-    hmSel=hmSel&&hmSel.cat===pick.cat&&hmSel.s===pick.s?null:pick;
-    if(hmReview){hmReview=null;el.querySelectorAll(".rag-pill.on").forEach(x=>{x.classList.remove("on");x.setAttribute("aria-pressed","false")})}
+    hmSel=pick;
     hm.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
-    if(hmSel){b.classList.add("sel");const r=b.getBoundingClientRect();
-      const col=tok(b.classList.contains("s-r")?"--danger":b.classList.contains("s-a")?"--accent":"--ok");burst(r.left+r.width/2,r.top+r.height/2,10,[col,col,tok("--ink")],.5)}
-    $("#hm-detail").innerHTML=hmDetail(view(),Date.now(),sod(Date.now()).getTime());
+    b.classList.add("sel");haptic();
+    openDayPop();
   });
   const rs=el.querySelector("#ragSum");
   if(rs)rs.addEventListener("click",e=>{
@@ -515,7 +514,7 @@ function heatmapHTML(list,now,t0){
   };
   const row=(from,label,off)=>`<div class="strip-grp"><div class="strip-lbl">${label}</div><div class="strip-row">${[...Array(7)].map((_,i)=>cell(t0+(from+i)*DAY,off+i)).join("")}</div></div>`;
   return `<div class="rag-sum" id="ragSum">${pill("r",0,"overdue")}${pill("a",1,"due today or at risk")}${pill("g",2,"on track")}</div>
-  <p class="rag-hint">Tap a colour to review its tasks one after another, or tap a day to see what's in it.</p>
+  <p class="rag-hint">Tap a day to open its tasks, or tap a colour to review its tasks one after another.</p>
   <div class="hm strip" role="group" aria-label="Status by day">${row(-7,"Last 7 days",0)}${row(0,"Today and the next 6 days",7)}</div>
   <div class="hm-legend"><span><i style="background:var(--danger)"></i>Overdue</span><span><i style="background:var(--accent)"></i>Due today or at risk</span><span><i style="background:var(--ok)"></i>Done or on track</span>
     <span style="flex-basis:100%">Each square is split by how many of that day's tasks are in each colour. The % is how much is done.</span></div>
@@ -589,7 +588,40 @@ function redrawReview(scroll){
   if(scroll)d.querySelector(".rv-item.cur")?.scrollIntoView({block:"nearest",behavior:REDUCED.matches?"auto":"smooth"});
 }
 function hmDetail(list,now,t0){
-  if(hmReview)return reviewHTML(list,now,t0);
+  return hmReview?reviewHTML(list,now,t0):"";
+}
+/* ---------- day pop-up (opens when a heatmap day is tapped) ---------- */
+function openDayPop(){
+  if(!drawDayPop())return;
+  const pop=$("#pop");pop.hidden=false;requestAnimationFrame(()=>pop.classList.add("open"));
+  $("#popClose").focus();
+}
+function closeDayPop(){
+  const pop=$("#pop");if(pop.hidden)return;
+  const back=hmSel&&document.querySelector(`.hm-cell[data-s="${hmSel.s}"]`);
+  hmSel=null;document.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
+  pop.classList.remove("open");setTimeout(()=>{pop.hidden=true},250);
+  back&&back.focus();
+}
+function drawDayPop(){ // returns false when the day has nothing to show
+  if(!hmSel)return false;
+  const now=Date.now(),t0=sod(now).getTime(),html=dayHTML(view(),now,t0);
+  if(!html){closeDayPop();return false}
+  $("#popTitle").textContent=new Date(hmSel.s).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"});
+  $("#popBody").innerHTML=html;
+  return true;
+}
+$("#popClose").onclick=closeDayPop;
+$("#pop").addEventListener("click",e=>{
+  if(e.target.id==="pop"){closeDayPop();return}
+  const tk=e.target.closest("button.tick");if(!tk)return;
+  const t=view().find(x=>x.id===tk.dataset.id);if(!t)return;
+  if(t.done){save({...t,done:false,doneAt:null});return}
+  const r=tk.getBoundingClientRect();burst(r.left+r.width/2,r.top+r.height/2,16,[tok(catVar(t.cat)),tok("--accent")],.8);dustBrand();haptic("success");
+  save({...t,done:true,doneAt:Date.now()});
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#pop").hidden)closeDayPop()});
+function dayHTML(list,now,t0){
   if(!hmSel)return "";
   const {s:ds}=hmSel;
   const day=list.filter(t=>t.due>=ds&&t.due<ds+DAY).sort((a,b)=>a.due-b.due);
@@ -598,8 +630,8 @@ function hmDetail(list,now,t0){
   const n={r:0,a:0,g:0};day.forEach(t=>n[colour(t)]++);
   const groups={};day.forEach(t=>{(groups[t.cat]=groups[t.cat]||[]).push(t)});
   const names=Object.keys(groups).sort((x,y)=>groups[y].length-groups[x].length||x.localeCompare(y));
-  const rowH=t=>{const late=!t.done&&t.due<now;const k=colour(t);return `<div class="row rag-${k}${t.done?" done":""}" style="--cc:${cc(t.cat)}"><span class="tick" style="${late?"border-color:var(--danger)":""}"></span><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="rag-tag ${k}">${RAGW[k]}</span>${t.pri?'<span class="flag">● Important</span>':""}</div></div><span class="mono" style="color:${late?"var(--danger)":"var(--muted)"}">${esc(t.done?"Done":fmtDue(t.due))}</span></div>`};
-  return `<div class="rv"><div class="rv-head"><h5>${esc(new Date(ds).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"}))}</h5><span class="mono" style="color:var(--muted)">${doneN} of ${day.length} done · ${Math.round(doneN/day.length*100)}%</span></div>
+  const rowH=t=>{const late=!t.done&&t.due<now;const k=colour(t);return `<div class="row rag-${k}${t.done?" done":""}" style="--cc:${cc(t.cat)}"><button class="tick" data-id="${esc(t.id)}" aria-label="${t.done?"Mark not done":"Mark done"}" style="${late?"border-color:var(--danger)":""}"></button><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="rag-tag ${k}">${RAGW[k]}</span>${t.pri?'<span class="flag">● Important</span>':""}</div></div><span class="mono" style="color:${late?"var(--danger)":"var(--muted)"}">${esc(t.done?"Done":fmtDue(t.due))}</span></div>`};
+  return `<div class="rv"><div class="rv-head"><h5>${doneN} of ${day.length} done</h5><span class="pop-pct">${Math.round(doneN/day.length*100)}%</span></div>
    <div class="mixline"><span class="mix">${["r","a","g"].filter(k=>n[k]).map(k=>`<i class="${k}" style="flex:${n[k]}"></i>`).join("")}</span><span class="mono">${["r","a","g"].filter(k=>n[k]).map(k=>`${n[k]} ${RAGW[k].toLowerCase()}`).join(" · ")}</span></div>
    ${names.map(c=>{const g=groups[c],d=g.filter(t=>t.done).length;return `<div class="cat-grp"><div class="cat-lbl" style="--cc:${cc(c)}"><i></i>${esc(c)}<span class="mono">${d}/${g.length}</span></div><div class="list">${g.map(rowH).join("")}</div></div>`}).join("")}</div>`;
 }
@@ -810,6 +842,7 @@ initNotifications((action,id)=>{
 }).then(()=>scheduleSync(view));
 initNativeShell({onBack:()=>{
   if(!$("#sheet").hidden){closeSheet();return true}
+  if(!$("#pop").hidden){closeDayPop();return true}
   if(picked){picked=null;render();return true}
   if(openEdit){openEdit=null;render();return true}
   if(currentView!=="tasks"){setView("tasks");return true}

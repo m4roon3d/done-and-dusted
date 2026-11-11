@@ -524,3 +524,12 @@ button.rag-pill:active{transform:scale(.96)}
 .hm-detail .row.rag-a{box-shadow:inset 4px 0 0 var(--accent)}
 .hm-detail .row.rag-g{box-shadow:inset 4px 0 0 var(--ok)}
 .hm-detail .row .rag-tag{font-size:.66rem}
+
+/* ---- day pop-up ---- */
+#pop .sheet-card{min-height:40vh}
+#popBody{margin-top:0}
+#popBody .rv-head h5{font-size:.95rem}
+.pop-pct{font-family:var(--f-display);font-weight:800;font-size:1.5rem;line-height:1}
+#popBody .mixline .mix{min-height:12px;height:12px;border-radius:6px}
+#popBody .list{background:var(--surface)}
+#popBody .row{grid-template-columns:auto 1fr auto}
