@@ -162,6 +162,28 @@ const IN_DAY2=IW(["परसों","ನಾಡಿದ್ದು","நாளை ம
 const IN_TODAY=IW(["आज","ಇಂದು","ಇವತ್ತು","இன்று","இன்னைக்கு"]);
 const IN_TMRW=IW(["कल","ನಾಳೆ","நாளை","நாளைக்கு"]);
 const IN_HOUR=/(\d{1,2})(?:[:.](\d{2}))?\s*(?:बजे|ಗಂಟೆಗೆ|ಗಂಟೆ|மணிக்கு|மணி)/g;
+/* Speech engines on Android (the phone's recogniser and Chrome) sometimes hand back words they already sent,
+   so "buy milk tomorrow" arrives as "buy milk buy milk tomorrow". Drop any run of words that immediately
+   repeats itself. Single-word repeats people really say ("bye bye", "very very") are kept. */
+const KEEP_DOUBLE=new Set(["bye","very","no","so","really","ha","haha","knock","tut","chop","blah","bla","well","yes","now","go","come","many","more"]);
+function collapseRepeats(text){
+  let w=String(text||"").trim().split(/\s+/).filter(Boolean);
+  const k=x=>x.toLowerCase().replace(/[^\p{L}\p{N}]/gu,"");
+  let changed=true;
+  while(changed){
+    changed=false;
+    for(let n=Math.floor(w.length/2);n>=1&&!changed;n--){
+      for(let i=0;i+2*n<=w.length;i++){
+        let same=true;
+        for(let j=0;j<n;j++)if(k(w[i+j])!==k(w[i+n+j])||!k(w[i+j])){same=false;break}
+        if(!same)continue;
+        if(n===1&&KEEP_DOUBLE.has(k(w[i])))continue;
+        w.splice(i+n,n);changed=true;break;
+      }
+    }
+  }
+  return w.join(" ");
+}
 function normaliseSpeech(text){
   return String(text||"")
     .replace(IN_DAY2," in 2 days ").replace(IN_TODAY," today ").replace(IN_TMRW," tomorrow ")
@@ -206,4 +228,4 @@ function parseDictation(text,cats=[]){
   }).filter(x=>x.title.length>1&&!/^(?:um+|uh+|er+|hmm+|ok|okay|so|and|then|yeah|yes|right|that'?s (?:it|all))$/i.test(x.title));
 }
 
-export { esc, uid, DAY, sod, PALETTE, KNOWN, GUESS, guessCat, titleCase, catVar, cc, MON, WD, parseWhen, mkDate, parseQuick, REPEATS, repLabel, parseRepeat, nextDue, fmtDue, toLocalInput, sampleTasks, normaliseSpeech, splitDictation, parseDictation };
+export { esc, uid, DAY, sod, PALETTE, KNOWN, GUESS, guessCat, titleCase, catVar, cc, MON, WD, parseWhen, mkDate, parseQuick, REPEATS, repLabel, parseRepeat, nextDue, fmtDue, toLocalInput, sampleTasks, normaliseSpeech, collapseRepeats, splitDictation, parseDictation };
