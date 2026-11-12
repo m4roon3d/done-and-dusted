@@ -19,6 +19,7 @@ applyLook(); // before anything draws
 import JSZip from "jszip";
 import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation, REPEATS, repLabel, nextDue } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
+import { doBackup } from "./settings.js";
 import { playSplashSound } from "./splash-sound.js";
 import { pref, setPref } from "./prefs.js";
 import { loadAll, putTask, putTasks, deleteTask, clearTasks, migrateFromLocalStorage, requestPersist } from "./store.js";
@@ -70,7 +71,8 @@ function storageLabel(){
   el.textContent=isNative?"Saved on this phone":persisted?"Saved on this device · protected":"Saved on this device";
   el.classList.toggle("on",isNative||!!persisted);
 }
-function afterLoad(){examples=tasks.length===0;render();scheduleSync(view)}
+function wantExamples(){return tasks.length===0&&pref("start")==="examples"} // only when they chose to look around
+function afterLoad(){if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();scheduleSync(view)}
 function view(){return examples?exList:tasks}
 let exList=sampleTasks();
 function failed(e){toast({t:"Couldn't save that change",s:(e&&e.message)||"Your device storage may be full.",ttl:5000})}
@@ -195,10 +197,65 @@ $("#addForm").addEventListener("submit",e=>{
   setView("tasks");
 });
 
+/* ---------- onboarding: how to start, where data lives, a short checklist ---------- */
+const WHERE=isNative?"on this phone":"in this browser, on this device";
+function startHTML(){
+  const o=(id,icon,t,sub)=>`<button class="start-opt" id="${id}"><span class="start-ic" aria-hidden="true">${icon}</span><span><b>${t}</b><small>${sub}</small></span></button>`;
+  return `<div class="start panel"><h2>Welcome to Done &amp; Dusted</h2><p class="start-sub">How do you want to start?</p>
+    <div class="start-opts">${o("stKeep","📥","Import from Google Keep","Bring your Keep notes in as tasks, sorted by label.")}
+    ${o("stFresh","✏️","Start fresh","An empty list. Type or say your first task.")}
+    ${o("stEx","👀","Look around first","Explore with example tasks. They go away when you add your own.")}</div>
+    <p class="start-data"><b>Your tasks stay ${WHERE}.</b> No account, no cloud. Save a backup from Settings now and then so you never lose them.</p></div>`;
+}
+function wireStart(el){
+  const go=(v,fn)=>()=>{setPref("start",v);haptic();animIn=true;fn()};
+  el.querySelector("#stKeep").onclick=go("import",()=>{examples=wantExamples();setView("import")});
+  el.querySelector("#stFresh").onclick=go("fresh",()=>{examples=false;render();q.focus()});
+  el.querySelector("#stEx").onclick=go("examples",()=>{examples=true;render()});
+}
+function steps(){
+  const real=tasks;
+  return [
+    ["add","Add your first task",real.length>0,"Type it in the box above, or import from Keep."],
+    ["time","Give a task a time",real.some(t=>t.due),"Add “tomorrow 6pm” to a task. You'll get a reminder."],
+    ...(canDictate?[["voice","Say a task out loud",real.some(t=>t.src==="voice"),"Tap the mic and speak. Say several at once."]]:[]),
+    ["done","Finish one",real.some(t=>t.done),isNative||matchMedia("(pointer:coarse)").matches?"Tap the circle, or swipe the task right.":"Tap the circle next to it."],
+    ["dash","Peek at the Dashboard",!!pref("sawDash"),"See what's overdue, your streak and the task map."],
+    ["backup","Save a backup",!!pref("backedUp"),`Your tasks live only ${WHERE}. Keep a copy safe.`],
+  ];
+}
+function getDustedHTML(){
+  if(pref("gdHidden")||!pref("start")||pref("start")==="had")return "";
+  const st=steps(),n=st.filter(x=>x[2]).length;
+  if(n===st.length){setPref("gdHidden",true);setTimeout(()=>{dustBrand();toast({t:"All dusted ✓",s:"You've got the hang of it. Enjoy!",ttl:3500})},400);return ""}
+  const next=st.find(x=>!x[2])[0];
+  return `<div class="panel gd" style="--d:0"><div class="gd-head"><h4>Get dusted <small>${n} of ${st.length}</small></h4><button class="gd-x" id="gdHide" aria-label="Hide this checklist">Hide</button></div>
+    <div class="gd-bar" aria-hidden="true"><i style="width:${Math.round(n/st.length*100)}%"></i></div>
+    <ul class="gd-list">${st.map(([k,t,ok,sub])=>`<li class="${ok?"ok":""}${k===next?" next":""}"><button data-gd="${k}"${ok?" disabled":""}><span class="gd-tick" aria-hidden="true">${ok?"✓":""}</span><span><b>${t}</b>${k===next?`<small>${sub}</small>`:""}</span></button></li>`).join("")}</ul></div>`;
+}
+function dataNoteDue(){return !examples&&tasks.length>=5&&!pref("backedUp")&&!pref("dataNoteOk")}
+function dataNoteHTML(){return `<div class="note" style="--d:0"><span>Your tasks live only ${WHERE}. No account, no cloud. A backup keeps them safe.</span><span class="note-acts"><button id="dnBackup">Save a backup</button><button id="dnOk">Later</button></span></div>`}
+function wireOnboard(el){
+  const b=id=>el.querySelector("#"+id);
+  if(b("goFresh"))b("goFresh").onclick=()=>{setPref("start","fresh");examples=false;animIn=true;render();q.focus()};
+  if(b("gdHide"))b("gdHide").onclick=()=>{setPref("gdHidden",true);render()};
+  if(b("dnOk"))b("dnOk").onclick=()=>{setPref("dataNoteOk",true);render()};
+  if(b("dnBackup"))b("dnBackup").onclick=()=>doBackup();
+  el.querySelectorAll("[data-gd]").forEach(x=>x.onclick=()=>{
+    const k=x.dataset.gd;haptic();
+    if(k==="add"||k==="time"){q.focus();if(k==="time"&&!q.value){q.value="Call the plumber tomorrow 6pm";q.dispatchEvent(new Event("input"));q.select()}}
+    else if(k==="voice")micBtn.click();
+    else if(k==="dash")setView("dash");
+    else if(k==="backup")doBackup();
+    else if(k==="done")el.querySelector(".row:not(.done) .tick")?.focus();
+  });
+}
+
 /* ---------- dictation: speak several tasks, review, add ---------- */
 const dict={open:false,listening:false,text:"",items:[],session:null,note:""};
 const micBtn=$("#mic"),dictEl=$("#dict");
-dictationSupported().then(ok=>{micBtn.hidden=!ok});
+let canDictate=false;
+dictationSupported().then(ok=>{micBtn.hidden=!ok;canDictate=ok;if(currentView==="tasks")render()});
 micBtn.onclick=()=>{dict.listening?stopListening():startListening()};
 function reparse(){dict.items=parseDictation(dict.text,[...new Set(tasks.map(t=>t.cat))])}
 async function startListening(){
@@ -286,6 +343,7 @@ function setView(v){
   $(".seg").style.setProperty("--i",views.indexOf(v));
   document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
   $("#v-tasks").hidden=v!=="tasks";$("#v-plan").hidden=v!=="plan";$("#v-dash").hidden=v!=="dash";$("#v-import").hidden=v!=="import";
+  if(v==="dash"&&!pref("sawDash"))setPref("sawDash",true);
   if(changed){animIn=true;if(v==="import"){const s=$("#v-import");s.classList.remove("view-in");void s.offsetWidth;s.classList.add("view-in")}}
   render();
 }
@@ -328,7 +386,11 @@ function renderTasks(list,now,t0){
     ["No date","",open.filter(t=>!t.due).sort((a,b)=>b.pri-a.pri||b.createdAt-a.createdAt)],
   ];
   let h="";D=0;
-  if(examples) h+=`<div class="note" style="--d:0"><span>These are example tasks so you can see how Done &amp; Dusted works. They vanish when you add a task or import from Keep.</span><button id="goImp">Import from Keep</button></div>`;
+  if(!tasks.length&&!pref("start")){ // first run: ask how they want to start
+    el.classList.toggle("enter",animIn);el.innerHTML=startHTML();wireStart(el);return;
+  }
+  if(!examples){const g=getDustedHTML();if(g)h+=g;else if(dataNoteDue())h+=dataNoteHTML()}
+  if(examples) h+=`<div class="note" style="--d:0"><span>These are example tasks so you can see how Done &amp; Dusted works. They vanish when you add a task or import from Keep.</span><span class="note-acts"><button id="goFresh">Start fresh</button><button id="goImp">Import from Keep</button></span></div>`;
   h+=`<div class="chips" role="group" aria-label="Filter by category"><button class="chip" aria-pressed="${filter==="All"}" data-f="All">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
      names.map((c,i)=>`<button class="chip" style="--d:${Math.min(i+1,10)}" aria-pressed="${filter===c}" data-f="${esc(c)}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`;
   if(!examples&&open.length&&!pref("swipeTip")&&matchMedia("(pointer:coarse)").matches)
@@ -347,6 +409,7 @@ function renderTasks(list,now,t0){
   lastAdded=null;
   el.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{filter=b.dataset.f;render()});
   const gi=el.querySelector("#goImp");if(gi)gi.onclick=()=>setView("import");
+  wireOnboard(el);
   const tip=el.querySelector("#tipOk");if(tip)tip.onclick=()=>{setPref("swipeTip",true);render()};
   el.querySelectorAll(".row").forEach(r=>{
     const t=view().find(x=>x.id===r.dataset.id);if(!t)return;
@@ -1193,13 +1256,13 @@ setTimeout(checkDue,1500);
 /* shared with settings.js */
 function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>scheduleSync(view),
   getCap:()=>cap,setCap:v=>{cap=v;lsSet("dd.cap",cap)},
-  reload:async()=>{tasks=await loadAll();examples=tasks.length===0;animIn=true;render();scheduleSync(view)},
+  reload:async()=>{tasks=await loadAll();examples=wantExamples();animIn=true;render();scheduleSync(view)},
   isExamples:()=>examples,getPersisted:()=>persisted,
   // Settings → Delete all tasks. Returns what was removed so Undo can put it back.
   resetAll:async()=>{
     const snap={tasks:tasks.slice(),fired:[...fired]};
     await clearTasks();
-    tasks=[];examples=true;exList=sampleTasks();filter="All";openEdit=null;
+    tasks=[];setPref("start",null);examples=false;exList=sampleTasks();filter="All";openEdit=null;
     fired.clear();lsSet("dd.fired",[]);alarms.clear();
     animIn=true;render();scheduleSync(view);told(); // cancels scheduled reminders and empties other open tabs
     return snap;
@@ -1207,6 +1270,6 @@ function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,resy
   undoReset:async snap=>{
     await putTasks(snap.tasks);
     snap.fired.forEach(k=>fired.add(k));lsSet("dd.fired",[...fired].slice(-300));
-    tasks=await loadAll();examples=tasks.length===0;animIn=true;render();scheduleSync(view);told();
+    tasks=await loadAll();examples=wantExamples();animIn=true;render();scheduleSync(view);told();
   }}}
 initSheet(appBridge);
