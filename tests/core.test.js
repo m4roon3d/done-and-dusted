@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseQuick, parseWhen, guessCat, fmtDue, splitDictation, parseDictation, nextDue } from "../src/core.js";
+import { parseQuick, parseWhen, guessCat, fmtDue, splitDictation, parseDictation, collapseRepeats, nextDue } from "../src/core.js";
 import { readBackup } from "../src/store.js";
 
 const NOW = new Date(2026, 10, 11, 9, 0); // Wed 11 Nov 2026, 9:00
@@ -108,4 +108,14 @@ test("nextDue steps forward and never lands in the past", () => {
   assert.equal(nextDue(at(2028, 1, 29), "year", at(2028, 1, 29, 10)), at(2029, 1, 28), "29 Feb -> 28 Feb");
   assert.equal(nextDue(null, "day", now), null);
   assert.equal(nextDue(at(2026, 10, 11), "nope", now), null);
+});
+
+test("dictation: repeated words from the speech engine are dropped", () => {
+  assert.equal(collapseRepeats("buy milk buy milk tomorrow"), "buy milk tomorrow");
+  assert.equal(collapseRepeats("call mom call mom call mom at 6"), "call mom at 6");
+  assert.equal(collapseRepeats("pay pay pay rent"), "pay rent");
+  assert.equal(collapseRepeats("Pay rent tomorrow pay rent tomorrow at 9 am"), "Pay rent tomorrow at 9 am");
+  assert.equal(collapseRepeats("book the the tickets"), "book the tickets");
+  assert.equal(collapseRepeats("say bye bye to Ravi"), "say bye bye to Ravi");
+  assert.equal(collapseRepeats("water plants and feed the cat"), "water plants and feed the cat");
 });

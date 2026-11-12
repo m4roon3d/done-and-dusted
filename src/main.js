@@ -17,7 +17,7 @@ import "./styles.css";
 import { applyLook, onSystemThemeChange } from "./theme.js";
 applyLook(); // before anything draws
 import JSZip from "jszip";
-import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation, REPEATS, repLabel, nextDue } from "./core.js";
+import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation, collapseRepeats, REPEATS, repLabel, nextDue } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
 import { doBackup } from "./settings.js";
 import { playSplashSound } from "./splash-sound.js";
@@ -264,7 +264,7 @@ async function startListening(){
   dict.open=true;dict.listening=true;dict.note="";dict.text=keep;reparse();drawDict();haptic();
   micBtn.classList.add("live");micBtn.setAttribute("aria-label","Stop dictating");
   dict.session=await startDictation({lang:pref("dictLang")||"en-IN",
-    onText:t=>{dict.text=(keep?keep+" ":"")+t;reparse();drawDict(true)},
+    onText:t=>{dict.text=collapseRepeats((keep?keep+" ":"")+t);reparse();drawDict(true)},
     onEnd:why=>{
       dict.listening=false;dict.session=null;micBtn.classList.remove("live");micBtn.setAttribute("aria-label","Dictate tasks");
       dict.note=why==="denied"?"The microphone is blocked. Allow microphone access for Done & Dusted in your "+(isNative?"phone's app settings":"browser's site settings")+", then tap the mic again."

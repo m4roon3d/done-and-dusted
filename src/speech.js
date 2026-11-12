@@ -66,6 +66,7 @@ export async function startDictation({ lang = "en-IN", onText, onEnd }) {
       const t = e.results[i][0].transcript.trim();
       if (!t) continue;
       if (text && t.toLowerCase().startsWith(text.toLowerCase())) text = t; // a longer copy of what came before
+      else if (text && text.toLowerCase().startsWith(t.toLowerCase())) continue; // a shorter copy: already have it
       else if (!text.toLowerCase().endsWith(t.toLowerCase())) text += " " + t;
     }
     onText(text.replace(/\s+/g, " ").trim());
