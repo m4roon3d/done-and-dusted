@@ -518,7 +518,7 @@ function rowHTML(t){
       <label>Priority<select name="pri" id="e-pri-${esc(t.id)}"><option value="0"${!t.pri?" selected":""}>Normal</option><option value="1"${t.pri?" selected":""}>Important</option></select></label>
       <label>Repeat<select name="rep" id="e-rep-${esc(t.id)}"><option value="">Doesn't repeat</option>${Object.entries(REPEATS).map(([k,n])=>`<option value="${k}"${t.rep===k?" selected":""}>${n}</option>`).join("")}</select></label>
       <label class="full">Note<textarea name="note" id="e-note-${esc(t.id)}">${esc(t.note||"")}</textarea></label>
-      <div class="acts"><button class="btn pri" data-a="save">Save</button>${t.due?`<button class="btn" data-a="cal">Add to phone calendar</button>`:`<button class="btn" data-a="cal" hidden></button>`}${t.done?"":`<button class="btn" data-a="tmr">Move to tomorrow</button>`}<button class="btn warn" data-a="del">Delete</button></div>
+      <div class="acts"><button class="btn pri" data-a="save">Save</button>${t.due?`<button class="btn" data-a="cal">Add to calendar</button>`:`<button class="btn" data-a="cal" hidden></button>`}${t.done?"":`<button class="btn" data-a="tmr">Move to tomorrow</button>`}<button class="btn warn" data-a="del">Delete</button></div>
     </div>`;
   }
   return h+`</div>`;
@@ -1091,6 +1091,33 @@ async function exportICS(list){
    `SUMMARY:${String(t.title).replace(/[,;\\]/g,m=>"\\"+m)}`,`CATEGORIES:${t.cat}`,`DESCRIPTION:Done & Dusted · ${t.cat}`,
    "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:Task due","TRIGGER:-PT15M","END:VALARM","END:VEVENT"].join("\r\n"));
   const ics=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Done and Dusted//Tasks//EN",...ev,"END:VCALENDAR"].join("\r\n");
+  // Android app: straight into the phone's calendar. Web, one task: Google Calendar's add-event page.
+  if(isNative){
+    const ids=lsGet("dd.calIds",{});
+    try{
+      const {registerPlugin}=await import("@capacitor/core");
+      const Cal=registerPlugin("DDCalendar");
+      const r=await Cal.addEvents({events:list.map(t=>({title:t.title,start:t.due,minutes:15,rrule:RRULE[t.rep]||"",
+        description:"Done & Dusted · "+t.cat,eventId:ids[t.id]||-1}))});
+      r.ids.forEach((id,i)=>{if(id>0)ids[list[i].id]=id});lsSet("dd.calIds",ids);haptic("success");
+      const n=list.length,what=n===1?list[0].title:n+" tasks";
+      toast({t:r.added?"Added to "+r.calendar:"Updated in "+r.calendar,s:`${what}${n===1?" · "+fmtDue(list[0].due):""} · alert 15 min before`,ttl:3500});
+      return;
+    }catch(e){
+      const m=(e&&e.message)||"";
+      if(/denied/.test(m)){toast({t:"Calendar access is off",s:"Allow Calendar for Done & Dusted in your phone's app settings, then try again.",ttl:5000});return}
+      if(/nocalendar/.test(m)){toast({t:"No calendar on this phone",s:"Add a Google account in your phone's settings, or save a calendar file instead.",ttl:5000,actions:[["Save file",()=>icsFile(list,ics)]]});return}
+      // anything else: fall back to the calendar file below
+    }
+  }else if(list.length===1){
+    const t=list[0],gf=f;
+    const u="https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent(t.title)+"&dates="+gf(t.due)+"/"+gf(t.due+15*6e4)+
+      "&details="+encodeURIComponent("Done & Dusted · "+t.cat)+(RRULE[t.rep]?"&recur="+encodeURIComponent("RRULE:"+RRULE[t.rep]):"");
+    window.open(u,"_blank","noopener");return;
+  }
+  icsFile(list,ics);
+}
+async function icsFile(list,ics){
   try{
     const name=list.length===1?`${list[0].title.slice(0,40).replace(/[^\w ]+/g,"").trim()||"task"}.ics`:"done-and-dusted-reminders.ics";
     const r=await saveFile(name,ics,"text/calendar");
