@@ -185,14 +185,14 @@ async function drawSheet() {
   drawRestore();
 }
 
-async function doBackup() {
+export async function doBackup() {
   try {
     const data = await makeBackup({ cap: app.getCap() });
     if (!data.count) { app.toast({ t: "Nothing to back up yet", s: "Add or import a task first.", ttl: 3000 }); return; }
     const d = new Date(), p = (x) => String(x).padStart(2, "0");
     const name = `done-and-dusted-backup-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.json`;
     const r = await saveFile(name, JSON.stringify(data, null, 1), "application/json");
-    if (r !== "cancelled") { haptic("success"); app.toast({ t: "Backup saved", s: `${data.count} tasks in ${name}`, ttl: 4000 }); }
+    if (r !== "cancelled") { setPref("backedUp", Date.now()); app.render(); haptic("success"); app.toast({ t: "Backup saved", s: `${data.count} tasks in ${name}`, ttl: 4000 }); }
   } catch (e) {
     app.toast({ t: "Couldn't save the backup", s: e?.message || "Try again.", ttl: 5000 });
   }

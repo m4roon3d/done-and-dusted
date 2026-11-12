@@ -769,3 +769,32 @@ html.look-fade,html.look-fade *{transition:background-color .35s ease,color .35s
   /* the keyboard is up: get the tab bar out of the way */
   body:has(:is(input:not([type=checkbox]):not([type=file]),textarea):focus) .switch{display:none}
 }
+
+/* ---------- onboarding ---------- */
+.note-acts{display:flex;gap:8px;flex-wrap:wrap}
+.start{margin-top:14px;padding:22px 18px}
+.start h2{font-family:var(--f-display);font-size:1.45rem;margin:0 0 2px}
+.start-sub{color:var(--muted);margin:0 0 14px}
+.start-opts{display:grid;gap:10px}
+.start-opt{display:flex;gap:14px;align-items:center;text-align:left;width:100%;padding:14px;border:1.5px solid var(--line);border-radius:var(--r);background:var(--bg);color:inherit;font:inherit;cursor:pointer;transition:border-color .15s,transform .15s}
+.start-opt:hover,.start-opt:focus-visible{border-color:var(--accent);transform:translateY(-1px)}
+.start-opt b{display:block;font-size:1rem}
+.start-opt small{display:block;color:var(--muted);font-size:.84rem;margin-top:2px}
+.start-ic{font-size:1.5rem;width:2.2rem;text-align:center;flex:none}
+.start-data{margin:16px 0 0;font-size:.85rem;color:var(--muted);border-top:1px dashed var(--line);padding-top:12px}
+.start-data b{color:var(--ink,inherit)}
+.gd{margin:0 0 12px}
+.gd-head{display:flex;align-items:center;justify-content:space-between}
+.gd-head h4{margin:0}
+.gd-x{background:none;border:0;color:var(--muted);font:inherit;font-size:.82rem;cursor:pointer;padding:4px}
+.gd-bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden;margin:10px 0 6px}
+.gd-bar i{display:block;height:100%;background:var(--accent);border-radius:inherit;transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.gd-list{list-style:none;margin:0;padding:0}
+.gd-list button{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;background:none;border:0;padding:7px 2px;color:inherit;font:inherit;cursor:pointer}
+.gd-list button:disabled{cursor:default}
+.gd-list b{font-weight:600;font-size:.92rem}
+.gd-list small{display:block;color:var(--muted);font-size:.8rem;margin-top:1px}
+.gd-tick{flex:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-size:.7rem;font-weight:800;margin-top:1px}
+.gd-list .ok b{color:var(--muted);text-decoration:line-through}
+.gd-list .ok .gd-tick{background:var(--ok);border-color:var(--ok);color:#fff}
+.gd-list .next .gd-tick{border-color:var(--accent)}
