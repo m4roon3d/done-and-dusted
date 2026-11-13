@@ -20,6 +20,7 @@ import JSZip from "jszip";
 import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation, collapseRepeats, REPEATS, repLabel, nextDue } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
 import { doBackup } from "./settings.js";
+import { infoBtn, infoText, wireInfo } from "./info.js";
 import { playSplashSound } from "./splash-sound.js";
 import { pref, setPref } from "./prefs.js";
 import { loadAll, putTask, putTasks, deleteTask, clearTasks, migrateFromLocalStorage, requestPersist } from "./store.js";
@@ -72,7 +73,7 @@ function storageLabel(){
   el.classList.toggle("on",isNative||!!persisted);
 }
 function wantExamples(){return tasks.length===0&&pref("start")==="examples"} // only when they chose to look around
-function afterLoad(){if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();scheduleSync(view)}
+function afterLoad(){if(!q.value)$("#parse").innerHTML=parseHint();if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();scheduleSync(view)}
 function view(){return examples?exList:tasks}
 let exList=sampleTasks();
 function failed(e){toast({t:"Couldn't save that change",s:(e&&e.message)||"Your device storage may be full.",ttl:5000})}
@@ -176,10 +177,12 @@ function countUp(el,to){
 function partOfDay(){const h=new Date().getHours();return h<5?"Working late":h<12?"Good morning":h<17?"Good afternoon":"Good evening"}
 
 /* ---------- quick add ---------- */
+// the typing tip retires once you've got a few tasks in
+function parseHint(){return tasks.length<5?'<span>Try <b>#Home</b>, <b>fri 5pm</b>, <b>!</b> for important, <b>every monday</b>.</span>':""}
 const q=$("#quick");
 q.addEventListener("input",()=>{
   const v=q.value.trim();
-  if(!v){$("#parse").innerHTML='<span>Type naturally. <b>#Category</b>, a date like <b>fri 5pm</b> or <b>15 nov</b>, and <b>!</b> for important. <b>every monday</b> repeats.</span>';return}
+  if(!v){$("#parse").innerHTML=parseHint();return}
   const p=parseQuick(v);
   $("#parse").innerHTML=`<span class="pchip" style="color:${cc(p.cat)}">● ${esc(p.cat)}${p.catGuessed?" (guessed)":""}</span>`+
    (p.due?`<span class="pchip">⏰ ${esc(fmtDue(p.due))}</span>`:`<span class="pchip">No date</span>`)+(p.rep?`<span class="pchip">↻ ${esc(repLabel(p.rep))}</span>`:"")+(p.pri?`<span class="pchip" style="color:var(--danger)">Important</span>`:"");
@@ -254,6 +257,8 @@ function wireOnboard(el){
 /* ---------- dictation: speak several tasks, review, add ---------- */
 const dict={open:false,listening:false,text:"",items:[],session:null,note:""};
 const micBtn=$("#mic"),dictEl=$("#dict");
+$("#hdrAdd").onclick=()=>{haptic();setView("tasks");q.focus()};
+wireInfo($("#v-dash"),()=>render());
 let canDictate=false;
 dictationSupported().then(ok=>{micBtn.hidden=!ok;canDictate=ok;if(currentView==="tasks")render()});
 micBtn.onclick=()=>{dict.listening?stopListening():startListening()};
@@ -344,6 +349,8 @@ function setView(v){
   document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
   $("#v-tasks").hidden=v!=="tasks";$("#v-plan").hidden=v!=="plan";$("#v-dash").hidden=v!=="dash";$("#v-import").hidden=v!=="import";
   if(v==="dash"&&!pref("sawDash"))setPref("sawDash",true);
+  if(v==="plan"&&changed)setPref("planSeen",(pref("planSeen")||0)+1);
+  document.body.dataset.view=v;
   if(changed){animIn=true;if(v==="import"){const s=$("#v-import");s.classList.remove("view-in");void s.offsetWidth;s.classList.add("view-in")}}
   render();
 }
@@ -500,9 +507,8 @@ function rowHTML(t){
    <button class="tick" aria-label="${t.done?"Mark not done":"Mark done"}"></button>
    <div class="body"><div class="t">${esc(t.title)}</div><div class="meta">
      <span class="cat">${esc(t.cat)}</span>
-     ${t.due?`<span class="when ${late?"late":""}">${icon}${esc(when)}</span>`:""}
-     ${late?`<span class="age">${esc(age)}</span>`:""}
-     ${t.pri?`<span class="flag">● Important</span>`:""}
+     ${late?`<span class="age" title="Was due ${esc(fmtDue(t.due))}">${esc(age)}</span>`:t.due?`<span class="when">${icon}${esc(when)}</span>`:""}
+     ${t.pri?`<span class="flag" role="img" aria-label="Important" title="Important">●</span>`:""}
      ${t.rep?`<span class="rep">↻ ${esc(repLabel(t.rep))}</span>`:""}
      ${t.src==="keep"?`<span class="src">Keep</span>`:""}
      ${t.note?`<span style="overflow-wrap:anywhere">${esc(String(t.note).slice(0,80))}</span>`:""}
@@ -565,8 +571,8 @@ function renderDash(list,now,t0){
     <div class="tile" style="--d:3"><div class="k">Done · 7 days</div><div class="v" data-n="${weekDone}">${weekDone}</div><div class="s">${streak} day streak${streak>=3?" 🔥":""}</div></div>
   </div>`;
   if(tmCat&&!list.some(t=>t.cat===tmCat))tmCat=null;
-  P.map=`<div class="panel" style="--d:4"><h4>Task map <small>${tmCat?"tap a task":"tap a category"}</small></h4>${tmCat?taskTreemapHTML(list,now,t0,tmCat):treemapHTML(list,now,t0)}</div>`;
-  P.heat=`<div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day</small></h4>${heatmapHTML(list,now,t0)}</div>`;
+  P.map=`<div class="panel" style="--d:4"><h4>Task map <small>${tmCat?"tap a task":"tap a category"} ${infoBtn("map")}</small></h4>${tmCat?taskTreemapHTML(list,now,t0,tmCat):treemapHTML(list,now,t0)}</div>`;
+  P.heat=`<div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day ${infoBtn("heat")}</small></h4>${heatmapHTML(list,now,t0)}</div>`;
   P.ring=`<div class="panel ring" style="--d:4"><svg viewBox="0 0 150 150" role="img" aria-label="Today ${Math.round(pct*100)} percent complete">
       <circle cx="75" cy="75" r="${R}" fill="none" stroke="var(--sunk)" stroke-width="14"/>
       <circle class="prog" cx="75" cy="75" r="${R}" fill="none" stroke="var(--accent)" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct)}" transform="rotate(-90 75 75)" style="--c:${C}"/>
@@ -704,7 +710,7 @@ function renderPlan(list,now,t0){
   `<div class="plan-bar"><h2>This week</h2><div class="plan-ctl">
     <div class="cap" role="group" aria-label="Tasks per day"><button id="capDown" aria-label="Fewer per day">−</button><span>Up to <b>${cap}</b> a day</span><button id="capUp" aria-label="More per day">+</button></div>
     <button class="btn auto" id="autoBtn"><span class="spark">✦</span> Auto-plan</button></div></div>
-  <p class="plan-hint">${picked?"Now tap the day to move it to. Tap the task again to cancel.":"Tap a task, then tap a day to move it. On a computer you can drag it. Auto-plan fills each day up to your limit, Important and overdue first."}</p>
+  ${picked?`<p class="plan-hint">Now tap the day to move it to. Tap the task again to cancel.</p>`:(pref("planSeen")||0)<=3?`<p class="plan-hint">Tap a task, then tap a day to move it. Auto-plan fills each day up to your limit.</p>`:""}
   <div class="tray${srcDay==="tray"?" src":""}" data-drop="tray" style="--d:0"><h4>To plan <small>${tray.length?tray.length+" without a day or overdue":"all planned"}</small></h4>
     <div class="cards">${tray.map((t,i)=>cardHTML(t,now,i)).join("")||'<span class="free">Nothing waiting. Nice.</span>'}</div>
     <button class="dropbtn" data-to="tray">Move here (no date)</button></div>
@@ -826,7 +832,7 @@ function treemapHTML(list,now,t0){
   }).join("");
   return `<div class="tm-wrap"><div class="tmap" role="group" aria-label="Categories" style="height:${px}px">${tiles}</div>
     <div class="hm-legend"><span><i style="background:var(--danger)"></i>Red · overdue</span><span><i style="background:var(--amber)"></i>Amber · due today or at risk</span><span><i style="background:var(--ok)"></i>Green · on track or done</span></div>
-    <p class="rag-hint" style="margin:8px 0 0">Bigger tiles have more tasks. Each tile is split into red, amber and green by its tasks. Tap a category to map its tasks.</p></div>`;
+    ${infoText("map","Bigger tiles have more tasks. Each tile is split into red, amber and green by its tasks. Tap a category to map its tasks.")}</div>`;
 }
 /* Task map, one category: one tile per task. Colour = the task's RAG (done tasks green and struck through).
    Size = how much it needs you: overdue 3, due today or at risk 2, on track 1.5, done 1; Important adds 1. */
@@ -857,7 +863,7 @@ function taskTreemapHTML(list,now,t0,cat){
       <button class="btn" data-tmgo="${esc(cat)}">Open list</button></div>
     <div class="tmap" role="group" aria-label="${esc(cat)} tasks" style="height:${px}px">${tiles}</div>
     <div class="hm-legend"><span><i style="background:var(--danger)"></i>Overdue ${n.r}</span><span><i style="background:var(--amber)"></i>Due today or at risk ${n.a}</span><span><i style="background:var(--ok)"></i>On track or done ${n.g}</span></div>
-    <p class="rag-hint" style="margin:8px 0 0">Bigger tiles need you sooner: overdue, then due today, then Important. Tap a task to see it and act on it.</p></div>`;
+    ${infoText("map","Bigger tiles need you sooner: overdue, then due today, then Important. Tap a task to see it and act on it.")}</div>`;
 }
 /* One colour per task: Green = done, or open and on track · Amber = open and due today, Important, or on a day
    with 3+ open tasks · Red = open and past its time. A day's square is split by how many tasks are in each. */
@@ -881,10 +887,8 @@ function heatmapHTML(list,now,t0){
   };
   const row=(from,label,off)=>`<div class="strip-grp"><div class="strip-lbl">${label}</div><div class="strip-row">${[...Array(7)].map((_,i)=>cell(t0+(from+i)*DAY,off+i)).join("")}</div></div>`;
   return `<div class="rag-sum" id="ragSum">${pill("r",0,"overdue")}${pill("a",1,"due today or at risk")}${pill("g",2,"on track")}</div>
-  <p class="rag-hint">Tap a day to open its tasks, or tap a colour to review its tasks one after another.</p>
+  ${infoText("heat","Tap a day to open its tasks, or tap a colour to review its tasks one after another. Each square is split by how many of that day's tasks are in each colour. The % is how much is done.")}
   <div class="hm strip" role="group" aria-label="Status by day">${row(-7,"Last 7 days",0)}${row(0,"Today and the next 6 days",7)}</div>
-  <div class="hm-legend"><span><i style="background:var(--danger)"></i>Overdue</span><span><i style="background:var(--amber)"></i>Due today or at risk</span><span><i style="background:var(--ok)"></i>Done or on track</span>
-    <span style="flex-basis:100%">Each square is split by how many of that day's tasks are in each colour. The % is how much is done.</span></div>
   <div class="hm-detail" id="hm-detail">${hmDetail(list,now,t0)}</div>`;
 }
 /* Every open task with a due date falls under one colour:
