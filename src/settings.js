@@ -1,4 +1,5 @@
 // Settings sheet (reminders, backup & restore, storage) and the Dashboard's reminders panel.
+import { infoBtn, infoText } from "./info.js";
 import { isNative, platform, saveFile, haptic } from "./platform.js";
 import { permissionState, requestPermission, exactAlarmState, openExactAlarmSetting, sync } from "./notify.js";
 import { pref, setPref } from "./prefs.js";
@@ -27,16 +28,16 @@ export function remindersPanelHTML(open, now) {
   }
   if (isNative) {
     const on = perm === "granted";
-    return `<h4>Phone reminders <small>${on ? "on · work even when the app is closed" : "off"}</small></h4>
-      <p class="rem-p">${on
-        ? `You'll get a notification at each due time, with <b>Done ✓</b> and <b>+1 hour</b> buttons. ${upcoming} upcoming task${upcoming === 1 ? " is" : "s are"} scheduled.`
-        : "Turn on notifications so the phone can alert you at each due time, even when the app is closed."}</p>
+    return `<h4>Phone reminders <small>${on ? `on · ${upcoming} scheduled ${infoBtn("rem")}` : "off"}</small></h4>
+      ${on
+        ? infoText("rem", "You'll get a notification at each due time, with <b>Done ✓</b> and <b>+1 hour</b> buttons. They work even when the app is closed.")
+        : `<p class="rem-p">Get an alert at each due time, even when the app is closed.</p>`}
       ${on && exact !== "granted" && platform === "android" ? `<p class="rem-p warnline">Alerts may arrive a few minutes late. Allow <b>Alarms &amp; reminders</b> for exact times.</p><button class="btn" id="remExact">Allow exact alarms</button>` : ""}
       ${on ? "" : `<button class="btn pri" id="remOn">Turn on reminders</button>`}`;
   }
   const on = perm === "granted";
-  return `<h4>Reminders <small>${on ? "browser notifications on" : "in-app chime"}</small></h4>
-    <p class="rem-p">While the app is open, a due task chimes and pops up${on ? ", and shows a notification if this tab is in the background" : ""}. For alerts when it's closed, install the Android app, or send upcoming tasks to your calendar with a 15-minute alert each.</p>
+  return `<h4>Reminders <small>${on ? "browser notifications on" : "in-app chime"} ${infoBtn("rem")}</small></h4>
+    ${infoText("rem", `While the app is open, a due task chimes and pops up${on ? ", and shows a notification if this tab is in the background" : ""}. For alerts when it's closed, install the Android app, or send upcoming tasks to your calendar with a 15-minute alert each.`)}
     <div class="acts">${perm === "prompt" ? `<button class="btn" id="remOn">Turn on browser notifications</button>` : ""}
     <button class="btn pri" id="icsAll">Send ${upcoming} upcoming task${upcoming === 1 ? "" : "s"} to calendar</button></div>`;
 }

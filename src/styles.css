@@ -798,3 +798,15 @@ html.look-fade,html.look-fade *{transition:background-color .35s ease,color .35s
 .gd-list .ok b{color:var(--muted);text-decoration:line-through}
 .gd-list .ok .gd-tick{background:var(--ok);border-color:var(--ok);color:#fff}
 .gd-list .next .gd-tick{border-color:var(--accent)}
+
+/* ---------- declutter ---------- */
+.info-b{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line);background:none;color:var(--muted);font:italic 700 .72rem/1 Georgia,serif;cursor:pointer;margin-left:6px;vertical-align:middle;padding:0;position:relative}
+.info-b::after{content:"";position:absolute;inset:-10px}
+.info-b[aria-expanded="true"]{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.info-t{margin:10px 0 0}
+.panel h4 small{white-space:nowrap}
+.parse:empty{display:none}
+.hdr-r{display:flex;gap:8px;align-items:center}
+.hdr-add{display:none}
+body:not([data-view="tasks"]) .hdr-add{display:grid}
+body:not([data-view="tasks"]) :is(#addForm,#dict,#parse){display:none!important}
