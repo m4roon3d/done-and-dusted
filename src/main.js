@@ -23,6 +23,7 @@ import { doBackup } from "./settings.js";
 import { infoBtn, infoText, wireInfo } from "./info.js";
 import { initWidget, pushWidget } from "./widget.js";
 import { holidayOn } from "./holidays.js";
+import { encodeList, decodeList, linkFor, appLink, qrSVG, planImport } from "./share.js";
 import { playSplashSound } from "./splash-sound.js";
 import { pref, setPref } from "./prefs.js";
 import { loadAll, putTask, putTasks, deleteTask, clearTasks, migrateFromLocalStorage, requestPersist } from "./store.js";
@@ -86,6 +87,7 @@ function startWidget(){
       setTimeout(()=>{q.focus();q.setSelectionRange(clean.length,clean.length)},250);
       toast({t:"Shared in",s:"Add a date or #category if you like, then tap Add.",ttl:3500});
     },
+    import:code=>{setView("tasks");receiveList(code)},
     shortcut:k=>{
       closeOv();
       if(k==="add"){setView("tasks");setTimeout(()=>q.focus(),250)}
@@ -96,7 +98,7 @@ function startWidget(){
   pushWidget(widgetData);
 }
 document.addEventListener("visibilitychange",()=>{if(!document.hidden){pushWidget(widgetData);calSyncSoon(300)}}); // a new day, or the calendar changed
-function afterLoad(){setTimeout(startWidget,800);calSyncSoon(2000);setTimeout(maybeWebBrief,1500);if(!q.value)$("#parse").innerHTML=parseHint();if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();syncOut()}
+function afterLoad(){setTimeout(startWidget,800);setTimeout(checkShareHash,300);calSyncSoon(2000);setTimeout(maybeWebBrief,1500);if(!q.value)$("#parse").innerHTML=parseHint();if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();syncOut()}
 function view(){return examples?exList:tasks}
 let exList=sampleTasks();
 function failed(e){toast({t:"Couldn't save that change",s:(e&&e.message)||"Your device storage may be full.",ttl:5000})}
@@ -280,6 +282,56 @@ async function calSync(){
   }catch(e){}
 }
 function eventsOn(s){return calEvents.filter(e=>e.start<s+DAY&&e.end>s)}
+
+/* ---------- shared lists: a link or QR that carries the tasks ---------- */
+async function shareList(cat){
+  const code=await encodeList(cat,tasks),url=linkFor(code),n=tasks.filter(t=>t.cat===cat&&!t.done).length,qr=qrSVG(url);
+  const text=`My ${cat} list on Done & Dusted (${n} task${n===1?"":"s"}). Tap to add it to yours:`;
+  haptic();openOv("share");
+  ovBody.innerHTML=`<div class="ov-top"><h2 id="ovTitle">Share ${esc(cat)}</h2><button class="btn sm" data-ovx>Close</button></div>
+    <div class="sh">${qr?`<div class="sh-qr" role="img" aria-label="QR code for the ${esc(cat)} list">${qr}</div><p class="sh-sub">Scan with the other phone's camera.</p>`:`<p class="sh-sub">This list is too long for a QR code, so send the link instead.</p>`}
+      <div class="fo-acts"><button class="btn pri" id="shSend">Send link</button><button class="btn" id="shCopy">Copy link</button></div>
+      <p class="sh-note">This sends a copy of ${n} open task${n===1?"":"s"}. When things change, share again and their copy updates: new tasks are added, finished ones get ticked off.</p></div>`;
+  ovBody.querySelector("#shSend").onclick=async()=>{
+    try{
+      if(isNative){const {Share}=await import("@capacitor/share");await Share.share({title:`${cat} list`,text,url,dialogTitle:"Send your "+cat+" list"});return}
+      if(navigator.share){await navigator.share({title:`${cat} list`,text,url});return}
+    }catch(e){if(e?.name==="AbortError"||/cancel/i.test(e?.message||""))return}
+    copyLink(url);
+  };
+  ovBody.querySelector("#shCopy").onclick=()=>copyLink(url);
+}
+async function copyLink(url){try{await navigator.clipboard.writeText(url);haptic("success");toast({t:"Link copied",s:"Paste it into WhatsApp or a message.",ttl:2500})}catch{toast({t:"Couldn't copy",s:"Long-press the QR code or use Send link.",ttl:3000})}}
+async function receiveList(code){
+  let got;
+  try{got=await decodeList(code)}catch{toast({t:"That link didn't work",s:"Ask for the list to be shared again.",ttl:4000});return}
+  const plan=planImport(got,tasks),n=plan.add.length+plan.update.length+plan.done.length;
+  openOv("recv");
+  const row=(t,tag)=>`<li><span class="tag ${tag}">${tag==="new"?"New":tag==="upd"?"Updated":"Done"}</span>${esc(t.title)}${t.due?` <small class="mono">${esc(fmtDue(t.due))}</small>`:""}</li>`;
+  ovBody.innerHTML=`<div class="ov-top"><h2 id="ovTitle">${esc(got.cat)} list</h2><button class="btn sm" data-ovx>Close</button></div>
+    <p class="sh-sub">Shared ${esc(fmtDue(got.at))} · ${got.tasks.filter(t=>!t.done).length} open task${got.tasks.filter(t=>!t.done).length===1?"":"s"}</p>
+    ${!isNative&&/Android/i.test(navigator.userAgent)?`<a class="btn sh-app" href="${appLink(code)}">Have the app? Open it there</a>`:""}
+    ${n?`<ul class="sh-list">${plan.add.map(t=>row(t,"new")).join("")}${plan.update.map(u=>row(u.x,"upd")).join("")}${plan.done.map(t=>row(t,"done")).join("")}</ul>
+      <div class="fo-acts"><button class="btn pri" id="rcGo">${plan.add.length&&!plan.update.length&&!plan.done.length?`Add ${plan.add.length} task${plan.add.length===1?"":"s"}`:"Bring my list up to date"}</button></div>`
+      :`<p class="do-week">You're already up to date with this list. ✓</p><div class="fo-acts"><button class="btn pri" data-ovx>Lovely</button></div>`}`;
+  const go=ovBody.querySelector("#rcGo");if(!go)return;
+  go.onclick=async()=>{
+    const now=Date.now(),out=[
+      ...plan.add.map((x,i)=>({...x,cat:got.cat,done:false,doneAt:null,createdAt:now+i,reminded:false,src:"shared"})),
+      ...plan.update.map(({t,x})=>({...t,title:x.title,due:x.due,pri:x.pri,rep:x.rep,note:x.note,who:x.who,effort:x.effort,mins:x.mins,reminded:x.due!==t.due?false:t.reminded})),
+      ...plan.done.map(t=>({...t,done:true,doneAt:now}))];
+    if(examples)examples=false;
+    tasks=[...tasks.filter(t=>!out.some(o=>o.id===t.id)),...out];
+    try{await putTasks(out);told()}catch(e){failed(e)}
+    syncOut();closeOv();filter=got.cat;setView("tasks");rain();
+    toast({t:`${got.cat} list ${plan.add.length===n?"added":"updated"}`,s:[plan.add.length?`${plan.add.length} new`:"",plan.update.length?`${plan.update.length} updated`:"",plan.done.length?`${plan.done.length} ticked off`:""].filter(Boolean).join(" · "),ttl:3500});
+  };
+}
+window.addEventListener("hashchange",()=>checkShareHash());
+function checkShareHash(){
+  const m=location.hash.match(/^#share=([zj]\.[A-Za-z0-9_-]+)/);if(!m)return false;
+  history.replaceState(null,"",location.pathname+location.search);receiveList(m[1]);return true;
+}
 
 /* ---------- full-screen overlay: weekly dust-off and focus mode ---------- */
 const ov=$("#ov"),ovBody=$("#ovBody");let ovMode=null,ovBack=null;
@@ -621,6 +673,7 @@ function renderTasks(list,now,t0){
   if(examples) h+=`<div class="note" style="--d:0"><span>These are example tasks so you can see how Done &amp; Dusted works. They vanish when you add a task or import from Keep.</span><span class="note-acts"><button id="goFresh">Start fresh</button><button id="goImp">Import from Keep</button></span></div>`;
   h+=`<div class="chips" role="group" aria-label="Filter by category"><button class="chip" aria-pressed="${filter==="All"}" data-f="All">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
      names.map((c,i)=>`<button class="chip" style="--d:${Math.min(i+1,10)}" aria-pressed="${filter===c}" data-f="${esc(c)}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`;
+  if(!examples&&filter!=="All"&&tasks.some(t=>t.cat===filter&&!t.done))h+=`<div class="share-row"><button class="linkbtn" id="shareList">Share ${esc(filter)} list</button></div>`;
   if(!examples&&open.length&&!pref("swipeTip")&&matchMedia("(pointer:coarse)").matches)
     h+=`<div class="note" style="--d:0"><span>Tip: swipe a task right to finish it, or left to move it to tomorrow.</span><button id="tipOk">Got it</button></div>`;
   let any=false;
@@ -636,6 +689,7 @@ function renderTasks(list,now,t0){
   const db=el.querySelector(".donebox");if(db)db.ontoggle=()=>{doneOpen=db.open};
   lastAdded=null;
   el.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{filter=b.dataset.f;render()});
+  const sl=el.querySelector("#shareList");if(sl)sl.onclick=()=>shareList(filter);
   const gi=el.querySelector("#goImp");if(gi)gi.onclick=()=>setView("import");
   wireOnboard(el);
   if(el.querySelector("#doGo")){el.querySelector("#doGo").onclick=startDust;el.querySelector("#doLater").onclick=()=>{setPref("dustSkip",sod(Date.now()).getTime());render()}}
