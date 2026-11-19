@@ -21,6 +21,7 @@ import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, 
 import { dictationSupported, startDictation } from "./speech.js";
 import { doBackup } from "./settings.js";
 import { infoBtn, infoText, wireInfo } from "./info.js";
+import { initWidget, pushWidget } from "./widget.js";
 import { playSplashSound } from "./splash-sound.js";
 import { pref, setPref } from "./prefs.js";
 import { loadAll, putTask, putTasks, deleteTask, clearTasks, migrateFromLocalStorage, requestPersist } from "./store.js";
@@ -54,7 +55,7 @@ function lsGet(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 const bc=("BroadcastChannel" in window)?new BroadcastChannel("dd-sync"):null; // keep two open tabs in step
 function told(){bc&&bc.postMessage("changed")}
-if(bc)bc.onmessage=async()=>{tasks=await loadAll();examples=examples&&tasks.length===0;render();scheduleSync(view)};
+if(bc)bc.onmessage=async()=>{tasks=await loadAll();examples=examples&&tasks.length===0;render();syncOut()};
 
 async function initStore(){
   try{
@@ -73,7 +74,28 @@ function storageLabel(){
   el.classList.toggle("on",isNative||!!persisted);
 }
 function wantExamples(){return tasks.length===0&&pref("start")==="examples"} // only when they chose to look around
-function afterLoad(){setTimeout(maybeWebBrief,1500);if(!q.value)$("#parse").innerHTML=parseHint();if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();scheduleSync(view)}
+let widgetReady=false;
+function startWidget(){
+  if(widgetReady)return;widgetReady=true;
+  initWidget({
+    done:id=>{const t=tasks.find(x=>x.id===id);if(t&&!t.done){save({...t,done:true,doneAt:Date.now()});toast({t:"Dusted from your widget ✓",s:t.title,ttl:2500,undo:()=>save({...t})})}},
+    share:text=>{
+      const clean=String(text).replace(/\s+/g," ").trim().slice(0,240);
+      closeOv();setView("tasks");q.value=clean;q.dispatchEvent(new Event("input"));
+      setTimeout(()=>{q.focus();q.setSelectionRange(clean.length,clean.length)},250);
+      toast({t:"Shared in",s:"Add a date or #category if you like, then tap Add.",ttl:3500});
+    },
+    shortcut:k=>{
+      closeOv();
+      if(k==="add"){setView("tasks");setTimeout(()=>q.focus(),250)}
+      else if(k==="dictate"){setView("tasks");setTimeout(()=>micBtn.click(),400)}
+      else if(k==="plan")setView("plan");
+      else {filter="All";setView("tasks")}
+    }});
+  pushWidget(widgetData);
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)pushWidget(widgetData)}); // a new day
+function afterLoad(){setTimeout(startWidget,800);setTimeout(maybeWebBrief,1500);if(!q.value)$("#parse").innerHTML=parseHint();if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();syncOut()}
 function view(){return examples?exList:tasks}
 let exList=sampleTasks();
 function failed(e){toast({t:"Couldn't save that change",s:(e&&e.message)||"Your device storage may be full.",ttl:5000})}
@@ -102,7 +124,7 @@ async function save(t){
   if(gone)tasks=tasks.filter(x=>x.id!==gone.id);
   render();
   try{await putTask(t);if(extra)await putTask(extra);if(gone)await deleteTask(gone.id);told()}catch(e){failed(e)}
-  scheduleSync(view);
+  syncOut();
 }
 function snooze(t){ // "not today": same time tomorrow
   const now=Date.now(),next=placeOn(t,sod(now).getTime()+DAY,now);
@@ -113,7 +135,7 @@ async function remove(t){
   if(t.src==="example"){exList=exList.filter(x=>x.id!==t.id);render();return}
   tasks=tasks.filter(x=>x.id!==t.id);examples=false;render();
   try{await deleteTask(t.id);told()}catch(e){failed(e)}
-  scheduleSync(view);
+  syncOut();
 }
 async function updateMany(list){
   if(!list.length)return;
@@ -121,13 +143,13 @@ async function updateMany(list){
   if(list[0].src==="example"){exList=exList.map(t=>byId.get(t.id)||t);render();return}
   tasks=tasks.map(t=>byId.get(t.id)||t);render();
   try{await putTasks(list);told()}catch(e){failed(e)}
-  scheduleSync(view);
+  syncOut();
 }
 async function saveMany(list,progress){
   examples=false;tasks.push(...list);render();
   try{await putTasks(list);told()}catch(e){failed(e)}
   progress&&progress(list.length,list.length);
-  scheduleSync(view);
+  syncOut();
 }
 
 /* ---------- state ---------- */
@@ -204,6 +226,21 @@ $("#addForm").addEventListener("submit",e=>{
   toast({t:"Added",s:`${titleCase(p.title)}${p.due?" · "+fmtDue(p.due):""}${p.rep?" · repeats "+repLabel(p.rep).toLowerCase():""}`,ttl:2500});
   setView("tasks");
 });
+
+/* ---------- keep the phone's reminders and the home-screen widget in step ---------- */
+function syncOut(){scheduleSync(view);pushWidget(widgetData)}
+const hexOf=(()=>{let cx=null;return c=>{try{cx=cx||document.createElement("canvas").getContext("2d");cx.fillStyle="#E39A14";cx.fillStyle=c;return cx.fillStyle}catch{return "#E39A14"}}})();
+function widgetData(){
+  const now=Date.now(),t0=sod(now).getTime(),open=tasks.filter(t=>!t.done&&t.due&&t.due<t0+DAY).sort((a,b)=>a.due-b.due);
+  const late=open.filter(t=>t.due<now).length,today=open.length-late;
+  const tf=ms=>new Date(ms).toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit"}).replace(" ","").toLowerCase();
+  const items=open.slice(0,5).map(t=>({id:t.id,title:(t.pri?"! ":"")+t.title,color:hexOf(tok(catVar(t.cat))),late:t.due<now,
+    when:t.due<now?(t.due<t0?Math.max(1,Math.floor((now-t.due)/DAY)||1)+"d late":tf(t.due)):tf(t.due)}));
+  const next=tasks.filter(t=>!t.done&&t.due&&t.due>=t0+DAY).sort((a,b)=>a.due-b.due)[0];
+  const sub=[today?`${today} due today`:"",late?`${late} overdue`:""].filter(Boolean).join(" · ")||"All clear";
+  return {head:new Date(now).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"}),sub,items,more:Math.max(0,open.length-5),
+    empty:next?`Nothing due today 🎉  Next: ${next.title}, ${fmtDue(next.due)}`:"Nothing due today 🎉",day:t0};
+}
 
 /* ---------- full-screen overlay: weekly dust-off and focus mode ---------- */
 const ov=$("#ov"),ovBody=$("#ovBody");let ovMode=null,ovBack=null;
@@ -1432,7 +1469,7 @@ initNotifications((action,id)=>{
   if(action==="done"&&!t.done){save({...t,done:true,doneAt:Date.now()});toast({t:"Dusted ✓",s:t.title,ttl:2500,undo:()=>save({...t})})}
   else if(action==="snooze")save({...t,due:Date.now()+3600e3});
   else{filter="All";alarms.set(t.id,Date.now()+6000);setView("tasks");setTimeout(()=>document.querySelector(`.row[data-id="${CSS.escape(t.id)}"]`)?.scrollIntoView({block:"center",behavior:"smooth"}),300)}
-}).then(()=>scheduleSync(view));
+}).then(()=>syncOut());
 initNativeShell({onShown:startSplash,onBack:()=>{
   if(ovMode){closeOv();return true}
   if(!$("#sheet").hidden){closeSheet();return true}
@@ -1444,16 +1481,16 @@ initNativeShell({onShown:startSplash,onBack:()=>{
   if(currentView!=="tasks"){setView("tasks");return true}
   return false;
 }});
-onResume(()=>{checkDue();scheduleSync(view)});
+onResume(()=>{checkDue();syncOut()});
 if(!isNative&&"serviceWorker" in navigator&&import.meta.env.PROD){addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))}
 {const h=location.hash.slice(1);if(["plan","dash","import"].includes(h))setView(h)} // app shortcuts
 initStore();render();
 setTimeout(checkDue,1500);
 
 /* shared with settings.js */
-function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>scheduleSync(view),
+function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>syncOut(),
   getCap:()=>cap,setCap:v=>{cap=v;lsSet("dd.cap",cap)},
-  reload:async()=>{tasks=await loadAll();examples=wantExamples();animIn=true;render();scheduleSync(view)},
+  reload:async()=>{tasks=await loadAll();examples=wantExamples();animIn=true;render();syncOut()},
   isExamples:()=>examples,getPersisted:()=>persisted,
   // Settings → Delete all tasks. Returns what was removed so Undo can put it back.
   resetAll:async()=>{
@@ -1461,12 +1498,12 @@ function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,resy
     await clearTasks();
     tasks=[];setPref("start",null);examples=false;exList=sampleTasks();filter="All";openEdit=null;
     fired.clear();lsSet("dd.fired",[]);alarms.clear();
-    animIn=true;render();scheduleSync(view);told(); // cancels scheduled reminders and empties other open tabs
+    animIn=true;render();syncOut();told(); // cancels scheduled reminders and empties other open tabs
     return snap;
   },
   undoReset:async snap=>{
     await putTasks(snap.tasks);
     snap.fired.forEach(k=>fired.add(k));lsSet("dd.fired",[...fired].slice(-300));
-    tasks=await loadAll();examples=wantExamples();animIn=true;render();scheduleSync(view);told();
+    tasks=await loadAll();examples=wantExamples();animIn=true;render();syncOut();told();
   }}}
 initSheet(appBridge);

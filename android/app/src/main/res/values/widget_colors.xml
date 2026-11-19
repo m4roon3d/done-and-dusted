@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ddw_bg">#FFFDF8</color>
+    <color name="ddw_ink">#1D2330</color>
+    <color name="ddw_muted">#6B7280</color>
+    <color name="ddw_line">#E6E1D6</color>
+    <color name="ddw_late">#D64534</color>
+    <color name="ddw_accent">#E39A14</color>
+    <string name="ddw_label">Today</string>
+    <string name="ddw_desc">What\'s due today, with a tick to finish it</string>
+    <string name="sc_add">Add task</string>
+    <string name="sc_dictate">Say tasks</string>
+    <string name="sc_plan">Plan my week</string>
+</resources>
