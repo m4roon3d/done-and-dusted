@@ -159,6 +159,7 @@ async function drawSheet() {
     </section>
     <section class="sset">
       <h3>Planning</h3>
+      ${isNative ? switchHTML("swCal", pref("calOnPlan"), "Calendar on Plan", "Show meetings from your phone's calendar, and keep task events in step both ways") : ""}
       ${switchHTML("swFest", pref("festivals"), "Festivals and holidays", "Show Indian festivals and public holidays on Plan")}
       ${switchHTML("swHolFree", pref("holidaysFree"), "Keep public holidays free", "Auto-plan won't put tasks on them")}
       <div class="cap" role="group" aria-label="Tasks per day"><button id="sCapDown" aria-label="Fewer per day">−</button><span>Up to <b>${app.getCap()}</b> tasks a day</span><button id="sCapUp" aria-label="More per day">+</button></div>
@@ -188,6 +189,9 @@ async function drawSheet() {
     doReset();
   };
   if (b("sPersist")) b("sPersist").onclick = async () => { await requestPersist(); drawSheet(); };
+  if (b("swCal")) b("swCal").onchange = async (e) => { setPref("calOnPlan", e.target.checked); haptic();
+    if (e.target.checked && !(await app.calAccess())) app.toast({ t: "Calendar access is off", s: "Allow Calendar for Done & Dusted in your phone's app settings.", ttl: 4000 });
+    app.render(); };
   b("swFest").onchange = (e) => { setPref("festivals", e.target.checked); haptic(); app.render(); };
   b("swHolFree").onchange = (e) => { setPref("holidaysFree", e.target.checked); haptic(); };
   b("sCapDown").onclick = () => { app.setCap(Math.max(1, app.getCap() - 1)); drawSheet(); app.render(); };
