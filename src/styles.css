@@ -862,3 +862,9 @@ body:not([data-view="tasks"]) :is(#addForm,#dict,#parse){display:none!important}
 .meta .eff{font-size:.8rem}
 .hol{font-family:var(--f-body);font-size:.7rem;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--sunk);color:var(--muted);margin-left:4px;white-space:nowrap}
 .hol.off{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--ink)}
+
+/* ---------- meetings on Plan ---------- */
+.evts{display:flex;flex-direction:column;gap:3px;margin:2px 0 8px}
+.evt{font-size:.78rem;color:var(--muted);padding:3px 10px;border-left:3px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evt .mono{font-size:.72rem;margin-right:4px}
+.evt.more{border-left-color:transparent;font-style:italic}

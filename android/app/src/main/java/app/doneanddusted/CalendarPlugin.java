@@ -108,6 +108,45 @@ public class CalendarPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /** Meetings and other events between `from` and `to` (not ours), and where our own task events stand now. */
+    @PluginMethod
+    public void getEvents(PluginCall call) {
+        if (getPermissionState("calendar") != PermissionState.GRANTED) { call.reject("denied", "denied"); return; }
+        long from = call.getLong("from", System.currentTimeMillis()), to = call.getLong("to", from + 7L * 86400000L);
+        ContentResolver cr = getContext().getContentResolver();
+        JSArray out = new JSArray(), ours = new JSArray();
+        android.net.Uri.Builder b = CalendarContract.Instances.CONTENT_URI.buildUpon();
+        ContentUris.appendId(b, from); ContentUris.appendId(b, to);
+        String[] cols = { CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN, CalendarContract.Instances.END,
+            CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.DESCRIPTION, CalendarContract.Instances.AVAILABILITY,
+            CalendarContract.Instances.SELF_ATTENDEE_STATUS };
+        try (Cursor c = cr.query(b.build(), cols, CalendarContract.Instances.VISIBLE + "=1", null, CalendarContract.Instances.BEGIN + " ASC")) {
+            while (c != null && c.moveToNext()) {
+                String desc = c.getString(4);
+                if (desc != null && desc.startsWith("Done & Dusted")) continue; // our own task events
+                if (c.getInt(6) == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED) continue;
+                JSObject e = new JSObject();
+                e.put("title", c.getString(0)); e.put("start", c.getLong(1)); e.put("end", c.getLong(2));
+                e.put("allDay", c.getInt(3) == 1); e.put("busy", c.getInt(5) != CalendarContract.Events.AVAILABILITY_FREE);
+                out.put(e);
+                if (out.length() >= 200) break;
+            }
+        } catch (Exception ex) { call.reject(ex.getMessage()); return; }
+        JSArray ids = call.getArray("ids");
+        if (ids != null) for (int i = 0; i < ids.length(); i++) {
+            long id = ids.optLong(i, -1);
+            if (id <= 0) continue;
+            JSObject o = new JSObject(); o.put("eventId", id);
+            try (Cursor c = cr.query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id),
+                    new String[] { CalendarContract.Events.DTSTART, CalendarContract.Events.DELETED }, null, null, null)) {
+                if (c != null && c.moveToFirst() && c.getInt(1) == 0) o.put("start", c.getLong(0)); else o.put("gone", true);
+            } catch (Exception ex) { o.put("gone", true); }
+            ours.put(o);
+        }
+        JSObject r = new JSObject(); r.put("events", out); r.put("ours", ours);
+        call.resolve(r);
+    }
+
     private boolean exists(ContentResolver cr, long id) {
         try (Cursor c = cr.query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id),
                 new String[] { CalendarContract.Events._ID, CalendarContract.Events.DELETED }, null, null, null)) {

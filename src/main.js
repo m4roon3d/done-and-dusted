@@ -95,8 +95,8 @@ function startWidget(){
     }});
   pushWidget(widgetData);
 }
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)pushWidget(widgetData)}); // a new day
-function afterLoad(){setTimeout(startWidget,800);setTimeout(maybeWebBrief,1500);if(!q.value)$("#parse").innerHTML=parseHint();if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();syncOut()}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){pushWidget(widgetData);calSyncSoon(300)}}); // a new day, or the calendar changed
+function afterLoad(){setTimeout(startWidget,800);calSyncSoon(2000);setTimeout(maybeWebBrief,1500);if(!q.value)$("#parse").innerHTML=parseHint();if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();syncOut()}
 function view(){return examples?exList:tasks}
 let exList=sampleTasks();
 function failed(e){toast({t:"Couldn't save that change",s:(e&&e.message)||"Your device storage may be full.",ttl:5000})}
@@ -230,7 +230,7 @@ $("#addForm").addEventListener("submit",e=>{
 });
 
 /* ---------- keep the phone's reminders and the home-screen widget in step ---------- */
-function syncOut(){scheduleSync(view);pushWidget(widgetData)}
+function syncOut(){scheduleSync(view);pushWidget(widgetData);calSyncSoon()}
 const hexOf=(()=>{let cx=null;return c=>{try{cx=cx||document.createElement("canvas").getContext("2d");cx.fillStyle="#E39A14";cx.fillStyle=c;return cx.fillStyle}catch{return "#E39A14"}}})();
 function widgetData(){
   const now=Date.now(),t0=sod(now).getTime(),open=tasks.filter(t=>!t.done&&t.due&&t.due<t0+DAY).sort((a,b)=>a.due-b.due);
@@ -243,6 +243,43 @@ function widgetData(){
   return {head:new Date(now).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"}),sub,items,more:Math.max(0,open.length-5),
     empty:next?`Nothing due today 🎉  Next: ${next.title}, ${fmtDue(next.due)}`:"Nothing due today 🎉",day:t0};
 }
+
+/* ---------- phone calendar, both ways (Android) ----------
+   Meetings show on Plan and fill up the day for Auto-plan. Task events we added stay in step:
+   move the event in Google Calendar and the task follows; move the task here and the event follows. */
+let calEvents=[],calTimer=0;
+function calLinks(){ // taskId -> {e: event id, at: the due time both sides last agreed on}
+  const v=lsGet("dd.calSync",null);if(v)return v;
+  const old=lsGet("dd.calIds",{}),n={};Object.entries(old).forEach(([k,e])=>{const t=tasks.find(x=>x.id===k);n[k]={e,at:t?.due||0}});
+  lsSet("dd.calSync",n);return n;
+}
+async function calPlugin(){const {registerPlugin}=await import("@capacitor/core");return registerPlugin("DDCalendar")}
+function calSyncSoon(ms=1200){if(!isNative)return;clearTimeout(calTimer);calTimer=setTimeout(calSync,ms)}
+async function calSync(){
+  if(!isNative||pref("calOnPlan")===false||examples)return;
+  try{
+    const Cal=await calPlugin();
+    if((await Cal.checkPermissions()).calendar!=="granted")return;
+    const t0=sod(Date.now()).getTime(),links=calLinks(),ids=Object.values(links).map(l=>l.e);
+    const r=await Cal.getEvents({from:t0,to:t0+8*DAY,ids});
+    calEvents=(r.events||[]).filter(e=>!e.allDay&&e.busy);
+    const byE=new Map((r.ours||[]).map(o=>[o.eventId,o]));
+    const moved=[],push=[];
+    for(const [tid,l] of Object.entries(links)){
+      const t=tasks.find(x=>x.id===tid),o=byE.get(l.e);
+      if(!t||t.done||!o){continue}
+      if(o.gone){delete links[tid];continue}
+      if(Math.abs(o.start-l.at)>6e4){moved.push({...t,due:o.start,reminded:false});l.at=o.start}        // moved in the calendar
+      else if(t.due&&Math.abs(t.due-l.at)>6e4){push.push(t);l.at=t.due}                                  // moved in the app
+    }
+    lsSet("dd.calSync",links);
+    if(moved.length){quietMove=true;await updateMany(moved);quietMove=false;
+      toast({t:moved.length===1?"Moved from your calendar":`${moved.length} tasks moved from your calendar`,s:moved.length===1?`${moved[0].title} · ${fmtDue(moved[0].due)}`:"",ttl:3500})}
+    if(push.length)await Cal.addEvents({events:push.map(t=>({title:t.title,start:t.due,minutes:15,rrule:RRULE[t.rep]||"",description:"Done & Dusted · "+t.cat,eventId:links[t.id].e}))}).catch(()=>{});
+    if(currentView==="plan")render();
+  }catch(e){}
+}
+function eventsOn(s){return calEvents.filter(e=>e.start<s+DAY&&e.end>s)}
 
 /* ---------- full-screen overlay: weekly dust-off and focus mode ---------- */
 const ov=$("#ov"),ovBody=$("#ovBody");let ovMode=null,ovBack=null;
@@ -883,7 +920,8 @@ function autoPlan(){
   if(!pool.length){toast({t:"Nothing to plan",s:"Every open task already has a future day.",ttl:3000});return}
   const w=t=>t.effort==="big"?2:t.effort==="quick"?.5:1;
   const free=i=>pref("holidaysFree")!==false&&holidayOn(t0+i*DAY+12*3600e3)?.off;
-  const load=[...Array(7)].map((_,i)=>free(i)?Infinity:open.filter(t=>t.due>=now&&t.due>=t0+i*DAY&&t.due<t0+(i+1)*DAY).reduce((n,t)=>n+w(t),0));
+  const meet=i=>pref("calOnPlan")===false?0:Math.min(2,eventsOn(t0+i*DAY).filter(e=>e.end-e.start>=30*6e4).length*.5); // meetings fill the day too
+  const load=[...Array(7)].map((_,i)=>free(i)?Infinity:meet(i)+open.filter(t=>t.due>=now&&t.due>=t0+i*DAY&&t.due<t0+(i+1)*DAY).reduce((n,t)=>n+w(t),0));
   const before=snapRects(),prev=[],next=[];let spill=0;
   for(const t of pool){
     let i=load.findIndex(n=>n+w(t)<=cap);
@@ -928,7 +966,9 @@ function renderPlan(list,now,t0){
       <h4><span class="dname">${i===0?'Today <span class="tag">'+d.toLocaleDateString("en-IN",{day:"numeric",month:"short"})+'</span>':i===1?"Tomorrow":d.toLocaleDateString("en-IN",{weekday:"long"})}${i>1?` <small>${d.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</small>`:""}${(()=>{const hd=pref("festivals")!==false&&holidayOn(s+12*3600e3);return hd?` <span class="hol${hd.off?" off":""}" title="${hd.off?"Public holiday":"Festival"}">${esc(hd.name)}</span>`:""})()}</span>
         <small class="mono">${n}/${cap}${doneN?` · ${doneN} done`:""}</small></h4>
       <div class="meter ${st}" style="--m:${Math.min(100,n/cap*100)}%"><span></span></div>
-      <div class="cards">${day.map((t,j)=>cardHTML(t,now,j+i)).join("")||'<span class="free">Free</span>'}</div>
+      ${(()=>{const ev=pref("calOnPlan")===false?[]:eventsOn(s);if(!ev.length)return "";const tf=ms=>new Date(ms).toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit"}).replace(" ","").toLowerCase();
+        return `<div class="evts">${ev.slice(0,4).map(e=>`<div class="evt"><span class="mono">${tf(Math.max(e.start,s))}</span> ${esc(e.title||"Busy")}</div>`).join("")}${ev.length>4?`<div class="evt more">+${ev.length-4} more in your calendar</div>`:""}</div>`})()}
+      <div class="cards">${day.map((t,j)=>cardHTML(t,now,j+i)).join("")||(eventsOn(s).length&&pref("calOnPlan")!==false?"":'<span class="free">Free</span>')}</div>
       <button class="dropbtn" data-to="${s}">Move here</button></div>`;
   }
   h+=`</div>${later?`<p class="plan-hint" style="margin-top:12px">${later} more planned beyond this week.</p>`:""}`;
@@ -1303,13 +1343,13 @@ async function exportICS(list){
   const ics=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Done and Dusted//Tasks//EN",...ev,"END:VCALENDAR"].join("\r\n");
   // Android app: straight into the phone's calendar. Web, one task: Google Calendar's add-event page.
   if(isNative){
-    const ids=lsGet("dd.calIds",{});
+    const ids=calLinks();
     try{
       const {registerPlugin}=await import("@capacitor/core");
       const Cal=registerPlugin("DDCalendar");
       const r=await Cal.addEvents({events:list.map(t=>({title:t.title,start:t.due,minutes:15,rrule:RRULE[t.rep]||"",
-        description:"Done & Dusted · "+t.cat,eventId:ids[t.id]||-1}))});
-      r.ids.forEach((id,i)=>{if(id>0)ids[list[i].id]=id});lsSet("dd.calIds",ids);haptic("success");
+        description:"Done & Dusted · "+t.cat,eventId:ids[t.id]?.e||-1}))});
+      r.ids.forEach((id,i)=>{if(id>0)ids[list[i].id]={e:id,at:list[i].due}});lsSet("dd.calSync",ids);haptic("success");
       const n=list.length,what=n===1?list[0].title:n+" tasks";
       toast({t:r.added?"Added to "+r.calendar:"Updated in "+r.calendar,s:`${what}${n===1?" · "+fmtDue(list[0].due):""} · alert 15 min before`,ttl:3500});
       return;
@@ -1494,7 +1534,8 @@ initStore();render();
 setTimeout(checkDue,1500);
 
 /* shared with settings.js */
-function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>syncOut(),
+async function calAccess(){try{const Cal=await calPlugin();const r=await Cal.requestPermissions({permissions:["calendar"]});if(r.calendar==="granted"){calSync();return true}}catch{}return false}
+function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>syncOut(),calAccess,
   getCap:()=>cap,setCap:v=>{cap=v;lsSet("dd.cap",cap)},
   reload:async()=>{tasks=await loadAll();examples=wantExamples();animIn=true;render();syncOut()},
   isExamples:()=>examples,getPersisted:()=>persisted,
