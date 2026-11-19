@@ -131,6 +131,8 @@ async function drawSheet() {
       ${switchHTML("swAlerts", pref("alerts"), "Alert me when a task is due", isNative ? "Phone notification, pop-up and chime" : "Pop-up, chime and browser notification")}
       ${pref("alerts") ? switchHTML("swSound", pref("sound"), "Chime sound", "Played with the pop-up while the app is open") : ""}
       ${pref("alerts") ? `<p>${esc(remLine)}</p>` : `<p>Alerts are off. Overdue tasks still show in red in your lists.</p>`}
+      ${pref("alerts") ? `${switchHTML("swBrief", pref("brief"), "Morning brief", "What's due and where to start, once each morning")}
+        ${pref("brief") ? `<label class="brief-at">Brief at <input type="time" id="sBriefAt" value="${esc(pref("briefAt") || "08:00")}"></label>` : ""}` : ""}
       ${pref("alerts") && perm === "prompt" ? `<button class="btn pri" id="sRemOn">${isNative ? "Allow phone notifications" : "Allow browser notifications"}</button>` : ""}
       ${pref("alerts") && isNative && platform === "android" && perm === "granted" && exact !== "granted" ? `<button class="btn" id="sExact">Allow exact alarms</button>` : ""}
     </section>
@@ -165,6 +167,9 @@ async function drawSheet() {
   if (b("swNight")) b("swNight").onchange = (e) => changeLook(() => setAutoNight(e.target.checked));
   b("swAlerts").onchange = (e) => setAlerts(e.target.checked);
   b("swSplash").onchange = (e) => { setPref("splashSound", e.target.checked); haptic(); };
+  if (b("swBrief")) b("swBrief").onchange = async (e) => { setPref("brief", e.target.checked); haptic(); if (isNative) await sync(app.view(), true).catch(() => {}); drawSheet(); };
+  if (b("sBriefAt")) b("sBriefAt").onchange = async (e) => { if (!e.target.value) return; setPref("briefAt", e.target.value); setPref("briefShown", null); if (isNative) await sync(app.view(), true).catch(() => {});
+    app.toast({ t: "Morning brief at " + e.target.value, ttl: 2000 }); };
   if (b("swSound")) b("swSound").onchange = (e) => { setPref("sound", e.target.checked); haptic(); };
   if (b("sRemOn")) b("sRemOn").onclick = enableReminders;
   if (b("sExact")) b("sExact").onclick = async () => { exact = await openExactAlarmSetting(); drawSheet(); };

@@ -17,7 +17,7 @@ import "./styles.css";
 import { applyLook, onSystemThemeChange } from "./theme.js";
 applyLook(); // before anything draws
 import JSZip from "jszip";
-import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation, collapseRepeats, REPEATS, repLabel, nextDue } from "./core.js";
+import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation, collapseRepeats, briefText, REPEATS, repLabel, nextDue } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
 import { doBackup } from "./settings.js";
 import { infoBtn, infoText, wireInfo } from "./info.js";
@@ -25,7 +25,7 @@ import { playSplashSound } from "./splash-sound.js";
 import { pref, setPref } from "./prefs.js";
 import { loadAll, putTask, putTasks, deleteTask, clearTasks, migrateFromLocalStorage, requestPersist } from "./store.js";
 import { isNative, saveFile, haptic, initNativeShell, onResume } from "./platform.js";
-import { initNotifications, scheduleSync, webNotify } from "./notify.js";
+import { initNotifications, scheduleSync, webNotify, focusAlarm } from "./notify.js";
 import { remindersPanelHTML, wireRemindersPanel, openSheet, closeSheet, initSheet } from "./settings.js";
 
 
@@ -73,11 +73,12 @@ function storageLabel(){
   el.classList.toggle("on",isNative||!!persisted);
 }
 function wantExamples(){return tasks.length===0&&pref("start")==="examples"} // only when they chose to look around
-function afterLoad(){if(!q.value)$("#parse").innerHTML=parseHint();if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();scheduleSync(view)}
+function afterLoad(){setTimeout(maybeWebBrief,1500);if(!q.value)$("#parse").innerHTML=parseHint();if(tasks.length&&!pref("start"))setPref("start","had");examples=wantExamples();render();scheduleSync(view)}
 function view(){return examples?exList:tasks}
 let exList=sampleTasks();
 function failed(e){toast({t:"Couldn't save that change",s:(e&&e.message)||"Your device storage may be full.",ttl:5000})}
 
+let quietMove=false; // dust-off decisions are deliberate, so they don't count as putting things off
 async function save(t){
   if(t.src==="example"){Object.assign(exList.find(x=>x.id===t.id),t);render();return}
   if(examples){examples=false}
@@ -91,6 +92,10 @@ async function save(t){
     }
   }else if(prev&&prev.done&&!t.done&&prev.spawned){ // un-finished (Undo): take back the one that was lined up
     const n=tasks.find(x=>x.id===prev.spawned);if(n&&!n.done)gone=n;t={...t,spawned:null};
+  }
+  if(prev&&!quietMove&&!t.done&&!prev.done&&prev.due&&t.due&&sod(t.due).getTime()>sod(prev.due).getTime()){ // pushed to a later day
+    t={...t,moves:(prev.moves||0)+1};
+    if(t.moves===4||(t.moves>4&&t.moves%3===1)){const nt=t;setTimeout(()=>postponeNudge(nt),900)}
   }
   if(i>=0)tasks[i]=t; else tasks.push(t);
   if(extra)tasks.push(extra);
@@ -199,6 +204,144 @@ $("#addForm").addEventListener("submit",e=>{
   toast({t:"Added",s:`${titleCase(p.title)}${p.due?" · "+fmtDue(p.due):""}${p.rep?" · repeats "+repLabel(p.rep).toLowerCase():""}`,ttl:2500});
   setView("tasks");
 });
+
+/* ---------- full-screen overlay: weekly dust-off and focus mode ---------- */
+const ov=$("#ov"),ovBody=$("#ovBody");let ovMode=null,ovBack=null;
+function openOv(mode){ovMode=mode;ovBack=document.activeElement;ov.hidden=false;requestAnimationFrame(()=>ov.classList.add("open"));document.body.style.overflow="hidden"}
+function closeOv(){if(!ovMode)return;const m=ovMode;ovMode=null;ov.classList.remove("open");document.body.style.overflow="";
+  setTimeout(()=>{if(!ovMode){ov.hidden=true;ovBody.innerHTML=""}},REDUCED.matches?0:220);
+  if(m==="focus")stopFocus();if(m==="dust"&&dust&&dust.i>0&&!dust.over)finishDust(true);
+  ovBack?.focus?.();render()}
+ov.addEventListener("click",e=>{if(e.target===ov||e.target.closest("[data-ovx]"))closeOv()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&ovMode)closeOv()});
+
+/* ---------- weekly dust-off: decide on each stale task ---------- */
+function staleTasks(){
+  const now=Date.now();
+  return tasks.filter(t=>!t.done&&((t.due&&now-t.due>=2*DAY)||(!t.due&&now-(t.createdAt||now)>=7*DAY)||(t.moves||0)>=3))
+    .sort((a,b)=>(a.due||a.createdAt||0)-(b.due||b.createdAt||0));
+}
+function staleWhy(t){
+  const now=Date.now(),days=ms=>Math.floor(ms/DAY),bits=[];
+  if(t.due&&t.due<now)bits.push(`${days(now-t.due)} days overdue`);
+  if(!t.due)bits.push(`no date for ${Math.max(1,Math.round(days(now-(t.createdAt||now))/7))} week${days(now-(t.createdAt||now))>=14?"s":""}`);
+  if((t.moves||0)>=2)bits.push(`moved ${t.moves} times`);
+  return bits.join(" · ");
+}
+function dustOffDue(){
+  if(examples)return false;
+  const last=pref("dustOff")||0,now=Date.now(),t0=sod(now).getTime();
+  if(pref("dustSkip")===t0||now-last<6*DAY)return false;
+  return staleTasks().length>=3&&(new Date().getDay()===0||now-last>9*DAY);
+}
+let dust=null;
+function startDust(){
+  const list=staleTasks();if(!list.length){toast({t:"Nothing gathering dust",s:"Every task is on time. Nice.",ttl:3000});return}
+  dust={ids:list.map(t=>t.id),i:0,done:0,moved:0,dropped:[],over:false};haptic();openOv("dust");drawDust();
+}
+function nextSat(t0){const d=new Date(t0),k=(6-d.getDay()+7)%7||7;return t0+k*DAY}
+function nextMon(t0){const d=new Date(t0),k=(8-d.getDay())%7||7;return t0+k*DAY}
+function drawDust(){
+  const n=dust.ids.length;
+  while(dust.i<n&&!tasks.some(t=>t.id===dust.ids[dust.i]&&!t.done))dust.i++;
+  if(dust.i>=n){finishDust();return}
+  const t=tasks.find(x=>x.id===dust.ids[dust.i]);
+  ovBody.innerHTML=`<div class="ov-top"><h2 id="ovTitle">Weekly dust-off</h2><span class="mono">${dust.i+1} / ${n}</span><button class="btn sm" data-ovx>Close</button></div>
+    <div class="do-bar" aria-hidden="true"><i style="width:${Math.round(dust.i/n*100)}%"></i></div>
+    <div class="do-card" style="--cc:${cc(t.cat)}"><span class="cat">${esc(t.cat)}</span><div class="do-t">${esc(t.title)}</div><p class="do-why">${esc(staleWhy(t))}</p></div>
+    <div class="do-q">Still want this?</div>
+    <div class="do-acts">
+      <button class="btn pri" data-do="done">Already done ✓</button>
+      <div class="do-row"><button class="btn" data-do="tmr">Tomorrow</button><button class="btn" data-do="sat">Weekend</button><button class="btn" data-do="mon">Next week</button></div>
+      <div class="do-row"><button class="btn" data-do="someday">Someday</button><button class="btn warn" data-do="drop">Drop it</button></div>
+      <button class="do-skip" data-do="skip">Skip for now</button></div>`;
+  ovBody.querySelector("[data-do=done]").focus({preventScroll:true});
+}
+ovBody.addEventListener("click",e=>{
+  const b=e.target.closest("[data-do]");if(!b||ovMode!=="dust")return;
+  const t=tasks.find(x=>x.id===dust.ids[dust.i]);if(!t)return;
+  const a=b.dataset.do,now=Date.now(),t0=sod(now).getTime();
+  quietMove=true;
+  if(a==="done"){dust.done++;haptic("success");const r=b.getBoundingClientRect();burst(r.left+r.width/2,r.top+r.height/2,16);save({...t,done:true,doneAt:now})}
+  else if(a==="drop"){dust.dropped.push(t);haptic("warn");remove(t)}
+  else if(a!=="skip"){dust.moved++;haptic();
+    save(a==="someday"?{...t,due:null,moves:0,reminded:false}:{...placeOn(t,a==="tmr"?t0+DAY:a==="sat"?nextSat(t0):nextMon(t0),now),moves:0})}
+  quietMove=false;
+  const card=ovBody.querySelector(".do-card");card?.classList.add(a==="drop"?"out-l":"out-r");
+  dust.i++;setTimeout(()=>{if(ovMode==="dust")drawDust()},REDUCED.matches?0:260);
+});
+function finishDust(early){
+  dust.over=true;setPref("dustOff",Date.now());
+  if(early){const d=dust;toast({t:"Dust-off saved",s:`${d.done} done · ${d.moved} moved · ${d.dropped.length} dropped`,ttl:3500});return}
+  const now=Date.now(),t0=sod(now).getTime(),done=tasks.filter(t=>t.done&&t.doneAt);
+  const week=done.filter(t=>t.doneAt>=t0-6*DAY).length;
+  let streak=0;for(let i=0;i<60;i++){const s0=t0-i*DAY;if(done.some(t=>t.doneAt>=s0&&t.doneAt<s0+DAY))streak++;else if(i>0)break}
+  const d=dust;
+  ovBody.innerHTML=`<div class="ov-top"><h2 id="ovTitle">All dusted 🧹</h2><button class="btn sm" data-ovx>Close</button></div>
+    <div class="do-sum"><div><b>${d.done}</b><span>done</span></div><div><b>${d.moved}</b><span>rescheduled</span></div><div><b>${d.dropped.length}</b><span>dropped</span></div></div>
+    <p class="do-week">This week you finished <b>${week}</b> task${week===1?"":"s"}${streak>1?` and kept a <b>${streak}-day</b> streak${streak>=3?" 🔥":""}`:""}.</p>
+    <div class="do-acts">${d.dropped.length?`<button class="btn" id="doUndo">Bring back the ${d.dropped.length} dropped</button>`:""}<button class="btn pri" data-ovx>Lovely</button></div>`;
+  rain();dustBrand();haptic("success");
+  const u=ovBody.querySelector("#doUndo");if(u)u.onclick=()=>{d.dropped.forEach(t=>save(t));d.dropped=[];u.remove();toast({t:"Brought back",ttl:2500})};
+}
+
+/* ---------- focus mode: one task, a timer, nothing else ---------- */
+let focus=null,wake=null;
+function startFocus(id){
+  const t=view().find(x=>x.id===id);if(!t)return;
+  focus={id,len:pref("focusLen")||25,end:null,left:(pref("focusLen")||25)*6e4,tick:0,up:false};
+  haptic();openOv("focus");drawFocus();
+}
+function drawFocus(){
+  const t=view().find(x=>x.id===focus.id);if(!t){closeOv();return}
+  const run=!!focus.end;
+  ovBody.innerHTML=`<div class="ov-top"><h2 id="ovTitle">Focus</h2><button class="btn sm" data-ovx>Exit</button></div>
+    <div class="fo" style="--cc:${cc(t.cat)}"><span class="cat">${esc(t.cat)}</span><div class="fo-t">${esc(t.title)}</div>
+    <div class="fo-ring${run?" run":""}${focus.up?" up":""}"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="bg" cx="60" cy="60" r="54"/><circle class="fg" cx="60" cy="60" r="54" pathLength="100"/></svg><div class="fo-time mono" id="foTime" role="timer" aria-live="off"></div></div>
+    ${run||focus.up?"":`<div class="fo-len" role="group" aria-label="Minutes">${[15,25,45].map(m=>`<button class="chip${m===focus.len?" on":""}" data-fl="${m}" aria-pressed="${m===focus.len}">${m} min</button>`).join("")}</div>`}
+    <div class="fo-acts">${focus.up?`<button class="btn" id="foMore">+5 min</button>`:`<button class="btn" id="foGo">${run?"Pause":focus.left<focus.len*6e4?"Resume":"Start"}</button>`}<button class="btn pri" id="foDone">Done ✓</button></div>
+    <p class="fo-sub">${focus.up?"Time's up. Finished, or five more minutes?":run?"Phone stays awake. Everything else can wait.":"Pick a length and start. One thing at a time."}</p></div>`;
+  paintFocus();
+  ovBody.querySelectorAll("[data-fl]").forEach(b=>b.onclick=()=>{focus.len=+b.dataset.fl;focus.left=focus.len*6e4;setPref("focusLen",focus.len);haptic();drawFocus()});
+  const go=ovBody.querySelector("#foGo");if(go)go.onclick=()=>{focus.end?pauseFocus():runFocus();drawFocus()};
+  const more=ovBody.querySelector("#foMore");if(more)more.onclick=()=>{focus.up=false;focus.left=5*6e4;focus.len=Math.max(focus.len,5);runFocus();drawFocus()};
+  ovBody.querySelector("#foDone").onclick=e=>{
+    const t=view().find(x=>x.id===focus.id),r=e.currentTarget.getBoundingClientRect();
+    burst(r.left+r.width/2,r.top+r.height/2,30,[tok(catVar(t.cat)),tok("--accent")],1.1);dustBrand();haptic("success");
+    save({...t,done:true,doneAt:Date.now()});toast({t:"Dusted ✓",s:t.title,ttl:2500,undo:()=>save({...t})});
+    setTimeout(closeOv,REDUCED.matches?0:650);
+  };
+}
+function paintFocus(){
+  if(!focus)return;const el=$("#foTime");if(!el)return;
+  const left=focus.end?Math.max(0,focus.end-Date.now()):focus.left,sec=Math.ceil(left/1000);
+  el.textContent=focus.up?"0:00":`${Math.floor(sec/60)}:${String(sec%60).padStart(2,"0")}`;
+  ovBody.querySelector(".fo-ring .fg")?.style.setProperty("stroke-dashoffset",String(100-left/(focus.len*6e4)*100));
+  if(focus.end&&left<=0){focus.end=null;focus.left=0;focus.up=true;clearInterval(focus.tick);chime();haptic("warn");focusAlarm(null);drawFocus()}
+}
+async function runFocus(){
+  focus.end=Date.now()+focus.left;clearInterval(focus.tick);focus.tick=setInterval(paintFocus,500);
+  try{wake=await navigator.wakeLock?.request("screen")}catch{}
+  const t=view().find(x=>x.id===focus.id);focusAlarm(focus.end,t?.title);
+}
+function pauseFocus(){focus.left=Math.max(0,focus.end-Date.now());focus.end=null;clearInterval(focus.tick);focusAlarm(null);try{wake?.release()}catch{};wake=null}
+function stopFocus(){if(!focus)return;clearInterval(focus.tick);focusAlarm(null);try{wake?.release()}catch{};wake=null;focus=null}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&focus){paintFocus();if(focus.end)navigator.wakeLock?.request("screen").then(w=>wake=w).catch(()=>{})}});
+
+/* ---------- morning brief, in the app (the phone gets a notification instead) ---------- */
+function briefLine(at){
+  const s=sod(at).getTime(),open=tasks.filter(t=>!t.done&&t.due);
+  const due=open.filter(t=>t.due>=s&&t.due<s+DAY),late=open.filter(t=>t.due<s);
+  return briefText(due,late);
+}
+function maybeWebBrief(){
+  if(isNative||examples||!pref("brief")||!pref("alerts"))return;
+  const now=Date.now(),t0=sod(now).getTime(),[h,m]=String(pref("briefAt")||"08:00").split(":").map(Number);
+  if(now<t0+(h*60+m)*6e4||pref("briefShown")===t0)return;
+  setPref("briefShown",t0);
+  const b=briefLine(now);if(!b)return;
+  toast({t:"Good morning ☀️",s:b,sticky:true,actions:[["Plan my day",()=>setView("plan"),"go"]]});
+}
 
 /* ---------- onboarding: how to start, where data lives, a short checklist ---------- */
 const WHERE=isNative?"on this phone":"in this browser, on this device";
@@ -397,6 +540,7 @@ function renderTasks(list,now,t0){
     el.classList.toggle("enter",animIn);el.innerHTML=startHTML();wireStart(el);return;
   }
   if(!examples){const g=getDustedHTML();if(g)h+=g;else if(dataNoteDue())h+=dataNoteHTML()}
+  if(dustOffDue()){const n=staleTasks().length;h+=`<div class="note dust-note" style="--d:0"><span>🧹 <b>Weekly dust-off.</b> ${n} tasks are gathering dust. Two minutes to sort them.</span><span class="note-acts"><button id="doGo">Start</button><button id="doLater">Not now</button></span></div>`}
   if(examples) h+=`<div class="note" style="--d:0"><span>These are example tasks so you can see how Done &amp; Dusted works. They vanish when you add a task or import from Keep.</span><span class="note-acts"><button id="goFresh">Start fresh</button><button id="goImp">Import from Keep</button></span></div>`;
   h+=`<div class="chips" role="group" aria-label="Filter by category"><button class="chip" aria-pressed="${filter==="All"}" data-f="All">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
      names.map((c,i)=>`<button class="chip" style="--d:${Math.min(i+1,10)}" aria-pressed="${filter===c}" data-f="${esc(c)}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`;
@@ -417,6 +561,7 @@ function renderTasks(list,now,t0){
   el.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{filter=b.dataset.f;render()});
   const gi=el.querySelector("#goImp");if(gi)gi.onclick=()=>setView("import");
   wireOnboard(el);
+  if(el.querySelector("#doGo")){el.querySelector("#doGo").onclick=startDust;el.querySelector("#doLater").onclick=()=>{setPref("dustSkip",sod(Date.now()).getTime());render()}}
   const tip=el.querySelector("#tipOk");if(tip)tip.onclick=()=>{setPref("swipeTip",true);render()};
   el.querySelectorAll(".row").forEach(r=>{
     const t=view().find(x=>x.id===r.dataset.id);if(!t)return;
@@ -447,6 +592,7 @@ function renderTasks(list,now,t0){
       openEdit=null;save({...t,title:v("title").trim()||t.title,cat,due,pri:+v("pri"),rep:rp,note:v("note"),reminded:due!==t.due?false:t.reminded});
     };
     const tm=f.querySelector("[data-a=tmr]");if(tm)tm.onclick=()=>{openEdit=null;snooze(t)};
+    const fo=f.querySelector("[data-a=focus]");if(fo)fo.onclick=()=>{openEdit=null;startFocus(t.id)};
     f.querySelector("[data-a=del]").onclick=()=>{openEdit=null;remove(t);toast({t:"Deleted",s:t.title,ttl:4000,undo:()=>save(t)})};
     f.querySelector("[data-a=cal]").onclick=()=>exportICS([t]);
     const sel=f.querySelector("[name=cat]");sel.onchange=()=>{f.querySelector(".newcat").hidden=sel.value!=="__new"};
@@ -524,7 +670,7 @@ function rowHTML(t){
       <label>Priority<select name="pri" id="e-pri-${esc(t.id)}"><option value="0"${!t.pri?" selected":""}>Normal</option><option value="1"${t.pri?" selected":""}>Important</option></select></label>
       <label>Repeat<select name="rep" id="e-rep-${esc(t.id)}"><option value="">Doesn't repeat</option>${Object.entries(REPEATS).map(([k,n])=>`<option value="${k}"${t.rep===k?" selected":""}>${n}</option>`).join("")}</select></label>
       <label class="full">Note<textarea name="note" id="e-note-${esc(t.id)}">${esc(t.note||"")}</textarea></label>
-      <div class="acts"><button class="btn pri" data-a="save">Save</button>${t.due?`<button class="btn" data-a="cal">Add to calendar</button>`:`<button class="btn" data-a="cal" hidden></button>`}${t.done?"":`<button class="btn" data-a="tmr">Move to tomorrow</button>`}<button class="btn warn" data-a="del">Delete</button></div>
+      <div class="acts"><button class="btn pri" data-a="save">Save</button>${t.due?`<button class="btn" data-a="cal">Add to calendar</button>`:`<button class="btn" data-a="cal" hidden></button>`}${t.done?"":`<button class="btn" data-a="tmr">Move to tomorrow</button><button class="btn" data-a="focus">Focus</button>`}<button class="btn warn" data-a="del">Delete</button></div>
     </div>`;
   }
   return h+`</div>`;
@@ -655,10 +801,25 @@ function flip(before,landed=[]){ // cards glide from their old spot to the new o
     e.animate([{transform:`translate(${dx}px,${dy}px) scale(1.04)`,boxShadow:"0 12px 26px rgba(0,0,0,.2)"},{transform:"none",boxShadow:"none"}],{duration:520,easing:"cubic-bezier(.3,1.2,.5,1)"});
   });
 }
+/* The time you usually get things done: the middle of your last 60 finishes (needs 8+). Undated tasks land here. */
+let uhCache=null;
+function usualHour(){
+  if(uhCache&&uhCache.n===tasks.length)return uhCache.h;
+  const d=tasks.filter(t=>t.done&&t.doneAt).sort((a,b)=>b.doneAt-a.doneAt).slice(0,60).map(t=>{const x=new Date(t.doneAt);return x.getHours()+x.getMinutes()/60}).sort((a,b)=>a-b);
+  const h=d.length<8?null:Math.min(21,Math.max(7,Math.round(d[Math.floor(d.length/2)]*2)/2));
+  uhCache={n:tasks.length,h};return h;
+}
+function postponeNudge(t){
+  const cur=tasks.find(x=>x.id===t.id);if(!cur||cur.done)return;
+  haptic("warn");
+  toast({t:`Moved ${cur.moves} times`,s:`“${cur.title}” keeps slipping. Break it into a first small step, or let it go?`,sticky:true,actions:[
+    ["Break it down",()=>{setView("tasks");q.value=`First step: ${cur.title} today #${cur.cat}`;q.dispatchEvent(new Event("input"));q.focus();q.setSelectionRange(12,12+cur.title.length)},"go"],
+    ["Drop it",()=>{remove(cur);toast({t:"Dropped",s:cur.title,ttl:4000,undo:()=>save(cur)})}]]});
+}
 function placeOn(t,dayStart,now,slot=0){ // keep the task's time of day; if that's already past today, use the next free hour
   if(dayStart===null)return {...t,due:null,reminded:false};
-  const d=new Date(dayStart),src=t.due?new Date(t.due):null;
-  if(src)d.setHours(src.getHours(),src.getMinutes(),0,0);else d.setHours(9+slot,0,0,0);
+  const d=new Date(dayStart),src=t.due?new Date(t.due):null,uh=usualHour();
+  if(src)d.setHours(src.getHours(),src.getMinutes(),0,0);else if(uh!==null)d.setHours(Math.floor(uh)+slot,uh%1?30:0,0,0);else d.setHours(9+slot,0,0,0);
   if(d.getTime()<=now){const n=new Date(now);n.setMinutes(0,0,0);n.setHours(n.getHours()+1+slot);d.setTime(Math.max(d.getTime(),n.getTime()))}
   if(sod(d).getTime()!==dayStart){d.setTime(dayStart);d.setHours(21,0,0,0)}
   return {...t,due:d.getTime(),reminded:false};
@@ -709,7 +870,7 @@ function renderPlan(list,now,t0){
   let h=(examples?`<div class="note" style="--d:0"><span>Planning the example tasks. Your own tasks appear here once you add or import them.</span></div>`:"")+
   `<div class="plan-bar"><h2>This week</h2><div class="plan-ctl">
     <div class="cap" role="group" aria-label="Tasks per day"><button id="capDown" aria-label="Fewer per day">−</button><span>Up to <b>${cap}</b> a day</span><button id="capUp" aria-label="More per day">+</button></div>
-    <button class="btn auto" id="autoBtn"><span class="spark">✦</span> Auto-plan</button></div></div>
+    <button class="btn auto" id="autoBtn"><span class="spark">✦</span> Auto-plan</button>${!examples&&staleTasks().length?`<button class="btn" id="dustBtn">🧹 Dust-off</button>`:""}</div></div>
   ${picked?`<p class="plan-hint">Now tap the day to move it to. Tap the task again to cancel.</p>`:(pref("planSeen")||0)<=3?`<p class="plan-hint">Tap a task, then tap a day to move it. Auto-plan fills each day up to your limit.</p>`:""}
   <div class="tray${srcDay==="tray"?" src":""}" data-drop="tray" style="--d:0"><h4>To plan <small>${tray.length?tray.length+" without a day or overdue":"all planned"}</small></h4>
     <div class="cards">${tray.map((t,i)=>cardHTML(t,now,i)).join("")||'<span class="free">Nothing waiting. Nice.</span>'}</div>
@@ -734,6 +895,7 @@ function renderPlan(list,now,t0){
   $("#capDown").onclick=()=>{cap=Math.max(1,cap-1);lsSet("dd.cap",cap);render()};
   $("#capUp").onclick=()=>{cap=Math.min(12,cap+1);lsSet("dd.cap",cap);render()};
   $("#autoBtn").onclick=autoPlan;
+  if($("#dustBtn"))$("#dustBtn").onclick=startDust;
   el.querySelectorAll(".card").forEach(c=>{
     c.onclick=()=>{picked=picked===c.dataset.pid?null:c.dataset.pid;render()};
     c.ondragstart=e=>{e.dataTransfer.setData("text/plain",c.dataset.pid);e.dataTransfer.effectAllowed="move";requestAnimationFrame(()=>c.classList.add("dragging"))};
@@ -996,6 +1158,7 @@ $("#pop").addEventListener("click",e=>{
     if(act==="edit"){const id=t.id;closeDayPop();filter=t.cat;openEdit=id;haptic();setView("tasks");
       setTimeout(()=>document.querySelector(`.row[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({block:"center",behavior:"smooth"}),300);return}
     if(act==="undo"){save({...t,done:false,doneAt:null});haptic();return}
+    if(act==="focus"){const id=t.id;closeDayPop();startFocus(id);return}
     if(act==="done"){const r=tp.getBoundingClientRect();burst(r.left+r.width/2,r.top+r.height/2,18,[tok(catVar(t.cat)),tok("--accent")],.8);dustBrand();haptic("success");
       save({...t,done:true,doneAt:now});toast({t:"Dusted ✓",s:t.title,ttl:2500,undo:()=>save({...t})});return}
     const next=act==="hour"?{...t,due:now+3600e3,reminded:false}:placeOn(t,t0+(act==="week"?7:1)*DAY,now);
@@ -1016,7 +1179,7 @@ function taskPopHTML(t){ // pop-up for one task, opened from the task map
     ${t.note?`<p class="rv-sub" style="overflow-wrap:anywhere;white-space:pre-wrap">${esc(String(t.note))}</p>`:""}
     <p class="rv-sub">${t.done?"Dusted. Tap Not done to bring it back.":t.due?RAGSUB[k]:"No date yet. Give it a day, or edit it."}</p>
     <div class="rv-acts">${t.done?`<button class="btn" data-tp="undo">Not done</button>`
-      :`<button class="btn pri" data-tp="done">Done ✓</button>${late||(t.due&&t.due<t0+DAY)?`<button class="btn" data-tp="hour">+1 hour</button>`:""}<button class="btn" data-tp="tomorrow">Tomorrow</button><button class="btn" data-tp="week">Next week</button>`}
+      :`<button class="btn pri" data-tp="done">Done ✓</button>${late||(t.due&&t.due<t0+DAY)?`<button class="btn" data-tp="hour">+1 hour</button>`:""}<button class="btn" data-tp="tomorrow">Tomorrow</button><button class="btn" data-tp="week">Next week</button><button class="btn" data-tp="focus">Focus</button>`}
       <button class="btn" data-tp="edit">Edit</button></div></div>`;
 }
 function dayHTML(list,now,t0){
@@ -1263,12 +1426,15 @@ function drawPreview(){
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&picked){picked=null;render()}});
 /* ---------- boot ---------- */
 initNotifications((action,id)=>{
+  if(action==="brief"){setView("plan");return}
+  if(action==="focus"){if(focus&&ovMode==="focus")paintFocus();return}
   const t=view().find(x=>x.id===id);if(!t)return;
   if(action==="done"&&!t.done){save({...t,done:true,doneAt:Date.now()});toast({t:"Dusted ✓",s:t.title,ttl:2500,undo:()=>save({...t})})}
   else if(action==="snooze")save({...t,due:Date.now()+3600e3});
   else{filter="All";alarms.set(t.id,Date.now()+6000);setView("tasks");setTimeout(()=>document.querySelector(`.row[data-id="${CSS.escape(t.id)}"]`)?.scrollIntoView({block:"center",behavior:"smooth"}),300)}
 }).then(()=>scheduleSync(view));
 initNativeShell({onShown:startSplash,onBack:()=>{
+  if(ovMode){closeOv();return true}
   if(!$("#sheet").hidden){closeSheet();return true}
   if(!$("#pop").hidden){closeDayPop();return true}
   if(dict.open){closeDict();return true}

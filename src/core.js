@@ -184,6 +184,13 @@ function collapseRepeats(text){
   }
   return w.join(" ");
 }
+/* Morning brief: "3 due today · 1 overdue · Start with: Send SOW". Empty when there's nothing to say. */
+function briefText(due,late){
+  if(!due.length&&!late.length)return "";
+  const pick=[...late.filter(t=>t.pri),...due.filter(t=>t.pri),...[...late].sort((a,b)=>a.due-b.due),...[...due].sort((a,b)=>a.due-b.due)][0];
+  const bits=[];if(due.length)bits.push(`${due.length} due today`);if(late.length)bits.push(`${late.length} overdue`);
+  return bits.join(" · ")+(pick?` · Start with: ${pick.title}`:"");
+}
 function normaliseSpeech(text){
   return String(text||"")
     .replace(IN_DAY2," in 2 days ").replace(IN_TODAY," today ").replace(IN_TMRW," tomorrow ")
@@ -228,4 +235,4 @@ function parseDictation(text,cats=[]){
   }).filter(x=>x.title.length>1&&!/^(?:um+|uh+|er+|hmm+|ok|okay|so|and|then|yeah|yes|right|that'?s (?:it|all))$/i.test(x.title));
 }
 
-export { esc, uid, DAY, sod, PALETTE, KNOWN, GUESS, guessCat, titleCase, catVar, cc, MON, WD, parseWhen, mkDate, parseQuick, REPEATS, repLabel, parseRepeat, nextDue, fmtDue, toLocalInput, sampleTasks, normaliseSpeech, collapseRepeats, splitDictation, parseDictation };
+export { esc, uid, DAY, sod, PALETTE, KNOWN, GUESS, guessCat, titleCase, catVar, cc, MON, WD, parseWhen, mkDate, parseQuick, REPEATS, repLabel, parseRepeat, nextDue, fmtDue, toLocalInput, sampleTasks, normaliseSpeech, collapseRepeats, briefText, splitDictation, parseDictation };
