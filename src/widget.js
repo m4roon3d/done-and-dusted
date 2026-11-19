@@ -22,6 +22,7 @@ async function drain(h) {
   try { p = await W.takePending(); } catch { return; }
   (p.done || []).forEach((id) => h.done(id));
   (p.share || []).forEach((text) => h.share(text));
+  (p.imports || []).forEach((code) => h.import(code));
   if (p.shortcut) h.shortcut(p.shortcut);
 }
 

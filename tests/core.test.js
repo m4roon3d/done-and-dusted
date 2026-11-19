@@ -150,3 +150,26 @@ test("quick add keeps who and effort, and still reads the date", () => {
   assert.equal(p.effort, "quick");
   assert.ok(p.due);
 });
+
+test("shared lists: round trip, and resending updates instead of duplicating", async () => {
+  const { encodeList, decodeList, planImport } = await import("../src/share.js");
+  const now = Date.now();
+  const mine = [
+    { id: "a", title: "Buy milk", cat: "Home", due: now + 1e6, pri: 0, done: false },
+    { id: "b", title: "Fix tap", cat: "Home", due: null, pri: 1, done: false, who: "Plumber" },
+    { id: "c", title: "Old done", cat: "Home", done: true, doneAt: now - 30 * 864e5 },
+    { id: "d", title: "Work thing", cat: "Work", done: false },
+  ];
+  const got = await decodeList(await encodeList("Home", mine, now));
+  assert.equal(got.cat, "Home");
+  assert.deepEqual(got.tasks.map((t) => t.id), ["a", "b"]);
+  assert.equal(got.tasks[1].who, "Plumber");
+  let plan = planImport(got, []);
+  assert.equal(plan.add.length, 2);
+  const theirs = got.tasks.map((t) => ({ ...t, cat: "Home" }));
+  mine[0].done = true; mine[0].doneAt = now; mine[1].title = "Fix kitchen tap";
+  plan = planImport(await decodeList(await encodeList("Home", mine, now)), theirs);
+  assert.equal(plan.add.length, 0);
+  assert.equal(plan.done.length, 1);
+  assert.equal(plan.update.length, 1);
+});
