@@ -159,6 +159,8 @@ async function drawSheet() {
     </section>
     <section class="sset">
       <h3>Planning</h3>
+      ${switchHTML("swFest", pref("festivals"), "Festivals and holidays", "Show Indian festivals and public holidays on Plan")}
+      ${switchHTML("swHolFree", pref("holidaysFree"), "Keep public holidays free", "Auto-plan won't put tasks on them")}
       <div class="cap" role="group" aria-label="Tasks per day"><button id="sCapDown" aria-label="Fewer per day">−</button><span>Up to <b>${app.getCap()}</b> tasks a day</span><button id="sCapUp" aria-label="More per day">+</button></div>
     </section>
     <p class="about">Done &amp; Dusted ${VERSION} · ${isNative ? (platform === "ios" ? "iPhone" : "Android") : "Web"} · Plan it · Do it · Dust it</p>`;
@@ -186,6 +188,8 @@ async function drawSheet() {
     doReset();
   };
   if (b("sPersist")) b("sPersist").onclick = async () => { await requestPersist(); drawSheet(); };
+  b("swFest").onchange = (e) => { setPref("festivals", e.target.checked); haptic(); app.render(); };
+  b("swHolFree").onchange = (e) => { setPref("holidaysFree", e.target.checked); haptic(); };
   b("sCapDown").onclick = () => { app.setCap(Math.max(1, app.getCap() - 1)); drawSheet(); app.render(); };
   b("sCapUp").onclick = () => { app.setCap(Math.min(12, app.getCap() + 1)); drawSheet(); app.render(); };
   drawRestore();

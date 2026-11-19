@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseQuick, parseWhen, guessCat, fmtDue, splitDictation, parseDictation, collapseRepeats, briefText, nextDue } from "../src/core.js";
+import { parseQuick, parseWhen, guessCat, fmtDue, splitDictation, parseDictation, collapseRepeats, briefText, parseWho, parseEffort, nextDue } from "../src/core.js";
 import { readBackup } from "../src/store.js";
 
 const NOW = new Date(2026, 10, 11, 9, 0); // Wed 11 Nov 2026, 9:00
@@ -125,4 +125,28 @@ test("morning brief: counts, picks the important one first", () => {
   assert.equal(briefText(due,late), "2 due today · 1 overdue · Start with: Call bank");
   assert.equal(briefText([],[{title:"A",due:5},{title:"B",due:3}]), "2 overdue · Start with: B");
   assert.equal(briefText([],[]), "");
+});
+
+test("who a task involves", () => {
+  assert.equal(parseWho("Call Amma"), "Amma");
+  assert.equal(parseWho("call amma"), "Amma");
+  assert.equal(parseWho("Email Ravi Kumar about the SOW"), "Ravi Kumar");
+  assert.equal(parseWho("Meet with Priya"), "Priya");
+  assert.equal(parseWho("Pay rent"), null);
+  assert.equal(parseWho("Call the bank"), null);
+  assert.equal(parseWho("Water the plants"), null);
+});
+test("effort: durations come out of the title, words stay", () => {
+  assert.deepEqual(parseEffort("Write report for 2 hours"), { rest: "Write report", effort: "big", mins: 120 });
+  assert.deepEqual(parseEffort("Reply to Ravi (10 min)"), { rest: "Reply to Ravi", effort: "quick", mins: 10 });
+  assert.deepEqual(parseEffort("Quick call with bank"), { rest: "Quick call with bank", effort: "quick", mins: null });
+  assert.deepEqual(parseEffort("Data model overhaul"), { rest: "Data model overhaul", effort: "big", mins: null });
+  assert.deepEqual(parseEffort("Pay rent"), { rest: "Pay rent", effort: null, mins: null });
+});
+test("quick add keeps who and effort, and still reads the date", () => {
+  const p = parseQuick("call Amma tomorrow 6pm for 15 min");
+  assert.equal(p.title, "call Amma");
+  assert.equal(p.who, "Amma");
+  assert.equal(p.effort, "quick");
+  assert.ok(p.due);
 });

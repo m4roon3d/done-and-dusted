@@ -72,8 +72,35 @@ function parseQuick(text){
   let due=w.due;
   if(r.rep&&!due){const n=new Date(),d=sod(n);d.setHours(9,0,0,0);if(d<=n)d.setDate(d.getDate()+1);due=d.getTime()} // a repeat needs a first date: the next 9am
   if(r.rep==="weekday"&&due){const d=new Date(due);while(d.getDay()===0||d.getDay()===6)d.setDate(d.getDate()+1);due=d.getTime()}
-  const title=w.rest.replace(/\s+(by|on|at|before)$/i,"").trim();
-  return {title,due,cat:cat||guessCat(title),catGuessed:!cat,pri,rep:r.rep,hit:w.hit};
+  const e=parseEffort(w.rest);
+  const title=e.rest.replace(/\s+(by|on|at|before)$/i,"").trim();
+  return {title,due,cat:cat||guessCat(title),catGuessed:!cat,pri,rep:r.rep,hit:w.hit,who:parseWho(title),effort:e.effort,mins:e.mins};
+}
+
+/* ---------- who and how big ---------- */
+/* Effort: "for 30 min", "(2 hours)", "~15m" are taken out of the title; "quick", "small", "big", "deep work" are read but kept.
+   quick = 20 minutes or less, big = 90 minutes or more. */
+function parseEffort(text){
+  let mins=null,effort=null;
+  const rest=text.replace(/(?:\s|^)(?:for\s+|~|\()(\d+(?:\.\d+)?)\s*(m|min|mins|minutes?|h|hr|hrs|hours?)\)?(?=\s|$)/i,(_,n,u)=>{mins=Math.round(+n*(/^h/i.test(u)?60:1));return " "})
+    .replace(/(?:\s|^)(?:for\s+)?(?:an?\s+|half\s+an?\s+)?hour\b(?!\s*(?:before|after))/i,m=>{if(mins||!/for/i.test(m))return m;mins=/half/i.test(m)?30:60;return " "})
+    .replace(/\s+/g," ").trim();
+  if(mins!==null)effort=mins<=20?"quick":mins>=90?"big":null;
+  else if(/\b(?:quick(?:ly)?|small|tiny|5[- ]?min(?:ute)?)\b/i.test(rest))effort="quick";
+  else if(/\b(?:big|deep work|project|overhaul|whole day|half[- ]day)\b/i.test(rest))effort="big";
+  return {rest,effort,mins};
+}
+/* Who a task involves: "call Amma", "email Ravi about…", "meet with Priya". Names are capitalised words,
+   or the usual family words in English and Indian languages. */
+const KIN=/^(?:amma|appa|mom|mum|mummy|dad|daddy|papa|wife|husband|boss|paati|patti|thatha|tatha|ajji|ajja|anna|akka|thambi|thangachi|didi|bhaiya|bhai|nani|nana|dadi|dada|chitti|chithi|mama|mami|athai|attai|periyamma|periyappa|chithappa|uncle|aunty|auntie|grandma|grandpa|doctor|landlord|plumber|electrician|maid|driver|accountant|ca|teacher)$/i;
+function parseWho(title){
+  const VERB=/\b(call|ring|phone|text|whatsapp|message|msg|email|e-mail|mail|ask|tell|remind|ping|meet|visit|pay|thank|wish|invite|pick up|drop|see|with)\b/gi;
+  const m=String(title).replace(VERB,v=>v.toLowerCase()).match(/\b(?:call|ring|phone|text|whatsapp|message|msg|email|e-mail|mail|ask|tell|remind|ping|meet(?:\s+with)?|visit|pay|thank|wish|invite|pick up|drop|see|with)\s+((?:[A-Z][\p{L}'-]+)(?:\s+[A-Z][\p{L}'-]+)?|[\p{L}]+)/u);
+  if(!m)return null;
+  const w=m[1].trim();
+  if(KIN.test(w))return w[0].toUpperCase()+w.slice(1).toLowerCase();
+  if(/^[A-Z]/.test(w)&&!/^(?:The|A|An|My|Our|Your|Me|Him|Her|Them|Back|About|To|Today|Tomorrow|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Bank|Office|Team|Client|Bill|Rent|Tax)$/.test(w.split(" ")[0]))return w;
+  return null;
 }
 
 /* ---------- repeating tasks ---------- */
@@ -231,8 +258,8 @@ function parseDictation(text,cats=[]){
     let ttl=q.title.replace(/^(?:and|to)\s+/i,""),was;
     do{was=ttl;ttl=ttl.replace(/[\s,]+$/,"").replace(/\s+(?:for|on|at|by|every|this|the|before|until|till|in|of|and|to)$/i,"")}while(ttl!==was); // words left dangling once the date is taken out
     const title=titleCase(ttl);
-    return {title,due:q.due,cat:cat||q.cat,catGuessed:!cat&&q.catGuessed,pri:pri||q.pri,rep:q.rep};
+    return {title,due:q.due,cat:cat||q.cat,catGuessed:!cat&&q.catGuessed,pri:pri||q.pri,rep:q.rep,who:parseWho(title),effort:q.effort,mins:q.mins};
   }).filter(x=>x.title.length>1&&!/^(?:um+|uh+|er+|hmm+|ok|okay|so|and|then|yeah|yes|right|that'?s (?:it|all))$/i.test(x.title));
 }
 
-export { esc, uid, DAY, sod, PALETTE, KNOWN, GUESS, guessCat, titleCase, catVar, cc, MON, WD, parseWhen, mkDate, parseQuick, REPEATS, repLabel, parseRepeat, nextDue, fmtDue, toLocalInput, sampleTasks, normaliseSpeech, collapseRepeats, briefText, splitDictation, parseDictation };
+export { esc, uid, DAY, sod, PALETTE, KNOWN, GUESS, guessCat, titleCase, catVar, cc, MON, WD, parseWhen, mkDate, parseQuick, REPEATS, repLabel, parseRepeat, nextDue, fmtDue, toLocalInput, sampleTasks, normaliseSpeech, collapseRepeats, briefText, parseWho, parseEffort, splitDictation, parseDictation };

@@ -22,6 +22,7 @@ import { dictationSupported, startDictation } from "./speech.js";
 import { doBackup } from "./settings.js";
 import { infoBtn, infoText, wireInfo } from "./info.js";
 import { initWidget, pushWidget } from "./widget.js";
+import { holidayOn } from "./holidays.js";
 import { playSplashSound } from "./splash-sound.js";
 import { pref, setPref } from "./prefs.js";
 import { loadAll, putTask, putTasks, deleteTask, clearTasks, migrateFromLocalStorage, requestPersist } from "./store.js";
@@ -205,6 +206,7 @@ function partOfDay(){const h=new Date().getHours();return h<5?"Working late":h<1
 
 /* ---------- quick add ---------- */
 // the typing tip retires once you've got a few tasks in
+function fmtMins(m){return m>=60?(m%60?`${Math.floor(m/60)}h ${m%60}m`:`${m/60}h`):`${m} min`}
 function parseHint(){return tasks.length<5?'<span>Try <b>#Home</b>, <b>fri 5pm</b>, <b>!</b> for important, <b>every monday</b>.</span>':""}
 const q=$("#quick");
 q.addEventListener("input",()=>{
@@ -212,7 +214,7 @@ q.addEventListener("input",()=>{
   if(!v){$("#parse").innerHTML=parseHint();return}
   const p=parseQuick(v);
   $("#parse").innerHTML=`<span class="pchip" style="color:${cc(p.cat)}">● ${esc(p.cat)}${p.catGuessed?" (guessed)":""}</span>`+
-   (p.due?`<span class="pchip">⏰ ${esc(fmtDue(p.due))}</span>`:`<span class="pchip">No date</span>`)+(p.rep?`<span class="pchip">↻ ${esc(repLabel(p.rep))}</span>`:"")+(p.pri?`<span class="pchip" style="color:var(--danger)">Important</span>`:"");
+   (p.due?`<span class="pchip">⏰ ${esc(fmtDue(p.due))}</span>`:`<span class="pchip">No date</span>`)+(p.rep?`<span class="pchip">↻ ${esc(repLabel(p.rep))}</span>`:"")+(p.pri?`<span class="pchip" style="color:var(--danger)">Important</span>`:"")+(p.who?`<span class="pchip">👤 ${esc(p.who)}</span>`:"")+(p.effort?`<span class="pchip">${p.effort==="quick"?"⚡ Quick":"⛰ Big"}${p.mins?" · "+fmtMins(p.mins):""}</span>`:p.mins?`<span class="pchip">⏱ ${fmtMins(p.mins)}</span>`:"");
 });
 $("#addForm").addEventListener("submit",e=>{
   e.preventDefault();const v=q.value.trim();
@@ -221,7 +223,7 @@ $("#addForm").addEventListener("submit",e=>{
   if(examples){examples=false;animIn=true}
   const nid=uid();lastAdded=nid;haptic();
   const br=$("#addForm button").getBoundingClientRect();burst(br.left+br.width/2,br.top+br.height/2,14,[tok(catVar(p.cat)),tok("--accent")],.7);
-  save({id:nid,title:titleCase(p.title),cat:p.cat,due:p.due,pri:p.pri,rep:p.rep||null,done:false,doneAt:null,createdAt:Date.now(),src:"manual"});
+  save({id:nid,title:titleCase(p.title),cat:p.cat,due:p.due,pri:p.pri,rep:p.rep||null,who:p.who||null,effort:p.effort||null,mins:p.mins||null,done:false,doneAt:null,createdAt:Date.now(),src:"manual"});
   q.value="";q.dispatchEvent(new Event("input"));
   toast({t:"Added",s:`${titleCase(p.title)}${p.due?" · "+fmtDue(p.due):""}${p.rep?" · repeats "+repLabel(p.rep).toLowerCase():""}`,ttl:2500});
   setView("tasks");
@@ -326,7 +328,8 @@ function finishDust(early){
 let focus=null,wake=null;
 function startFocus(id){
   const t=view().find(x=>x.id===id);if(!t)return;
-  focus={id,len:pref("focusLen")||25,end:null,left:(pref("focusLen")||25)*6e4,tick:0,up:false};
+  const len=t.mins&&t.mins<=120?t.mins:t.effort==="quick"?15:t.effort==="big"?45:(pref("focusLen")||25);
+  focus={id,len,end:null,left:len*6e4,tick:0,up:false};
   haptic();openOv("focus");drawFocus();
 }
 function drawFocus(){
@@ -335,7 +338,7 @@ function drawFocus(){
   ovBody.innerHTML=`<div class="ov-top"><h2 id="ovTitle">Focus</h2><button class="btn sm" data-ovx>Exit</button></div>
     <div class="fo" style="--cc:${cc(t.cat)}"><span class="cat">${esc(t.cat)}</span><div class="fo-t">${esc(t.title)}</div>
     <div class="fo-ring${run?" run":""}${focus.up?" up":""}"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="bg" cx="60" cy="60" r="54"/><circle class="fg" cx="60" cy="60" r="54" pathLength="100"/></svg><div class="fo-time mono" id="foTime" role="timer" aria-live="off"></div></div>
-    ${run||focus.up?"":`<div class="fo-len" role="group" aria-label="Minutes">${[15,25,45].map(m=>`<button class="chip${m===focus.len?" on":""}" data-fl="${m}" aria-pressed="${m===focus.len}">${m} min</button>`).join("")}</div>`}
+    ${run||focus.up?"":`<div class="fo-len" role="group" aria-label="Minutes">${[...new Set([15,25,45,focus.len])].sort((a,b)=>a-b).map(m=>`<button class="chip${m===focus.len?" on":""}" data-fl="${m}" aria-pressed="${m===focus.len}">${m} min</button>`).join("")}</div>`}
     <div class="fo-acts">${focus.up?`<button class="btn" id="foMore">+5 min</button>`:`<button class="btn" id="foGo">${run?"Pause":focus.left<focus.len*6e4?"Resume":"Start"}</button>`}<button class="btn pri" id="foDone">Done ✓</button></div>
     <p class="fo-sub">${focus.up?"Time's up. Finished, or five more minutes?":run?"Phone stays awake. Everything else can wait.":"Pick a length and start. One thing at a time."}</p></div>`;
   paintFocus();
@@ -376,8 +379,8 @@ function maybeWebBrief(){
   const now=Date.now(),t0=sod(now).getTime(),[h,m]=String(pref("briefAt")||"08:00").split(":").map(Number);
   if(now<t0+(h*60+m)*6e4||pref("briefShown")===t0)return;
   setPref("briefShown",t0);
-  const b=briefLine(now);if(!b)return;
-  toast({t:"Good morning ☀️",s:b,sticky:true,actions:[["Plan my day",()=>setView("plan"),"go"]]});
+  const b=briefLine(now),hd=holidayOn(now);if(!b&&!hd)return;
+  toast({t:"Good morning ☀️"+(hd?" · Happy "+hd.name:""),s:b,sticky:true,actions:[["Plan my day",()=>setView("plan"),"go"]]});
 }
 
 /* ---------- onboarding: how to start, where data lives, a short checklist ---------- */
@@ -504,7 +507,7 @@ function drawDict(liveOnly){
   $("#dictMore").onclick=startListening;
   $("#dictCards").onclick=e=>{const b=e.target.closest("[data-drop]");if(!b)return;dict.items.splice(+b.dataset.drop,1);drawDictAfterDrop()};
   $("#dictAdd").onclick=()=>{
-    const now=Date.now(),list=dict.items.map((x,i)=>({id:uid()+i,title:x.title,cat:x.cat,due:x.due,pri:x.pri,rep:x.rep||null,done:false,doneAt:null,createdAt:now+i,src:"voice"}));
+    const now=Date.now(),list=dict.items.map((x,i)=>({id:uid()+i,title:x.title,cat:x.cat,due:x.due,pri:x.pri,rep:x.rep||null,who:x.who||null,effort:x.effort||null,mins:x.mins||null,done:false,doneAt:null,createdAt:now+i,src:"voice"}));
     if(!list.length)return;
     if(examples)animIn=true;
     burstAt("#dictAdd",20);haptic("success");
@@ -692,6 +695,7 @@ function rowHTML(t){
      <span class="cat">${esc(t.cat)}</span>
      ${late?`<span class="age" title="Was due ${esc(fmtDue(t.due))}">${esc(age)}</span>`:t.due?`<span class="when">${icon}${esc(when)}</span>`:""}
      ${t.pri?`<span class="flag" role="img" aria-label="Important" title="Important">●</span>`:""}
+     ${t.who?`<span class="who">👤 ${esc(t.who)}</span>`:""}${t.effort?`<span class="eff" title="${t.effort==="quick"?"Quick":"Big"}${t.mins?" · "+fmtMins(t.mins):""}">${t.effort==="quick"?"⚡":"⛰"}</span>`:""}
      ${t.rep?`<span class="rep">↻ ${esc(repLabel(t.rep))}</span>`:""}
      ${t.src==="keep"?`<span class="src">Keep</span>`:""}
      ${t.note?`<span style="overflow-wrap:anywhere">${esc(String(t.note).slice(0,80))}</span>`:""}
@@ -877,13 +881,15 @@ function autoPlan(){
   const open=list.filter(t=>!t.done);
   const pool=open.filter(t=>!t.due||t.due<now).sort((a,b)=>b.pri-a.pri||((a.due??Infinity)-(b.due??Infinity))||a.createdAt-b.createdAt);
   if(!pool.length){toast({t:"Nothing to plan",s:"Every open task already has a future day.",ttl:3000});return}
-  const load=[...Array(7)].map((_,i)=>open.filter(t=>t.due>=now&&t.due>=t0+i*DAY&&t.due<t0+(i+1)*DAY).length);
+  const w=t=>t.effort==="big"?2:t.effort==="quick"?.5:1;
+  const free=i=>pref("holidaysFree")!==false&&holidayOn(t0+i*DAY+12*3600e3)?.off;
+  const load=[...Array(7)].map((_,i)=>free(i)?Infinity:open.filter(t=>t.due>=now&&t.due>=t0+i*DAY&&t.due<t0+(i+1)*DAY).reduce((n,t)=>n+w(t),0));
   const before=snapRects(),prev=[],next=[];let spill=0;
   for(const t of pool){
-    let i=load.findIndex(n=>n<cap);
+    let i=load.findIndex(n=>n+w(t)<=cap);
     if(i<0){i=load.indexOf(Math.min(...load));spill++}
-    const placed=placeOn({...t,due:null},t0+i*DAY,now,load[i]);
-    load[i]++;prev.push(t);next.push(placed);
+    const placed=placeOn({...t,due:null},t0+i*DAY,now,Math.floor(load[i]));
+    load[i]+=w(t);prev.push(t);next.push(placed);
   }
   updateMany(next);
   requestAnimationFrame(()=>flip(before,next.map(t=>t.id)));
@@ -919,7 +925,7 @@ function renderPlan(list,now,t0){
     const n=day.length,st=n>cap?"r":n===cap?"a":"g";
     const d=new Date(s);
     h+=`<div class="lane${i===0?" is-today":""}${srcDay===s?" src":""}" data-drop="${s}" style="--d:${i+1}">
-      <h4><span class="dname">${i===0?'Today <span class="tag">'+d.toLocaleDateString("en-IN",{day:"numeric",month:"short"})+'</span>':i===1?"Tomorrow":d.toLocaleDateString("en-IN",{weekday:"long"})}${i>1?` <small>${d.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</small>`:""}</span>
+      <h4><span class="dname">${i===0?'Today <span class="tag">'+d.toLocaleDateString("en-IN",{day:"numeric",month:"short"})+'</span>':i===1?"Tomorrow":d.toLocaleDateString("en-IN",{weekday:"long"})}${i>1?` <small>${d.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</small>`:""}${(()=>{const hd=pref("festivals")!==false&&holidayOn(s+12*3600e3);return hd?` <span class="hol${hd.off?" off":""}" title="${hd.off?"Public holiday":"Festival"}">${esc(hd.name)}</span>`:""})()}</span>
         <small class="mono">${n}/${cap}${doneN?` · ${doneN} done`:""}</small></h4>
       <div class="meter ${st}" style="--m:${Math.min(100,n/cap*100)}%"><span></span></div>
       <div class="cards">${day.map((t,j)=>cardHTML(t,now,j+i)).join("")||'<span class="free">Free</span>'}</div>
