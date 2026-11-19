@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseQuick, parseWhen, guessCat, fmtDue, splitDictation, parseDictation, collapseRepeats, nextDue } from "../src/core.js";
+import { parseQuick, parseWhen, guessCat, fmtDue, splitDictation, parseDictation, collapseRepeats, briefText, nextDue } from "../src/core.js";
 import { readBackup } from "../src/store.js";
 
 const NOW = new Date(2026, 10, 11, 9, 0); // Wed 11 Nov 2026, 9:00
@@ -118,4 +118,11 @@ test("dictation: repeated words from the speech engine are dropped", () => {
   assert.equal(collapseRepeats("book the the tickets"), "book the tickets");
   assert.equal(collapseRepeats("say bye bye to Ravi"), "say bye bye to Ravi");
   assert.equal(collapseRepeats("water plants and feed the cat"), "water plants and feed the cat");
+});
+
+test("morning brief: counts, picks the important one first", () => {
+  const due=[{title:"Pay rent",due:2},{title:"Call bank",due:1,pri:1}], late=[{title:"Old thing",due:0}];
+  assert.equal(briefText(due,late), "2 due today · 1 overdue · Start with: Call bank");
+  assert.equal(briefText([],[{title:"A",due:5},{title:"B",due:3}]), "2 overdue · Start with: B");
+  assert.equal(briefText([],[]), "");
 });
