@@ -5,6 +5,7 @@
 import { isNative, platform } from "./platform.js";
 import { pref } from "./prefs.js";
 import { briefText } from "./core.js";
+import { holidayOn } from "./holidays.js";
 
 let LN = null;
 const MAX_PENDING = 60; // iOS keeps at most 64 pending notifications per app
@@ -97,7 +98,7 @@ export async function sync(tasks, force = false) {
   if (!up.length && !briefs.length) return 0;
   await LN.schedule({
     notifications: [...briefs.map((b, i) => ({
-      id: BRIEF_ID + i, title: "☀️ Good morning", body: b.text,
+      id: BRIEF_ID + i, title: "☀️ Good morning" + (b.hd ? " · Happy " + b.hd : ""), body: b.text,
       schedule: { at: new Date(b.at), allowWhileIdle: true }, channelId: "brief", actionTypeId: "BRIEF",
       smallIcon: "ic_stat_dd", iconColor: "#E39A14", extra: { brief: 1 },
     })), ...up.map((t) => ({
@@ -128,7 +129,8 @@ function briefPlan(tasks, now) {
     if (at.getTime() <= now + 5000) continue;
     const e = new Date(s); e.setDate(e.getDate() + 1);
     const text = briefText(open.filter((t) => t.due >= s && t.due < e.getTime()), open.filter((t) => t.due < s));
-    if (text) out.push({ at: at.getTime(), text });
+    const hd = holidayOn(at.getTime());
+    if (text || hd) out.push({ at: at.getTime(), text: text || "Nothing due. Enjoy the day.", hd: hd ? hd.name : "" });
   }
   return out;
 }
