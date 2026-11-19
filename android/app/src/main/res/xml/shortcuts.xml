@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="add" android:enabled="true" android:icon="@drawable/sc_add" android:shortcutShortLabel="@string/sc_add">
+        <intent android:action="app.doneanddusted.ADD" android:targetPackage="app.doneanddusted" android:targetClass="app.doneanddusted.MainActivity"/>
+    </shortcut>
+    <shortcut android:shortcutId="dictate" android:enabled="true" android:icon="@drawable/sc_mic" android:shortcutShortLabel="@string/sc_dictate">
+        <intent android:action="app.doneanddusted.DICTATE" android:targetPackage="app.doneanddusted" android:targetClass="app.doneanddusted.MainActivity"/>
+    </shortcut>
+    <shortcut android:shortcutId="plan" android:enabled="true" android:icon="@drawable/sc_plan" android:shortcutShortLabel="@string/sc_plan">
+        <intent android:action="app.doneanddusted.PLAN" android:targetPackage="app.doneanddusted" android:targetClass="app.doneanddusted.MainActivity"/>
+    </shortcut>
+</shortcuts>

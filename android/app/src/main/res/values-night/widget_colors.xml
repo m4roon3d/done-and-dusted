@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ddw_bg">#1E2230</color>
+    <color name="ddw_ink">#F2EEE6</color>
+    <color name="ddw_muted">#A3A9B8</color>
+    <color name="ddw_line">#343A4B</color>
+    <color name="ddw_late">#FF7A6B</color>
+    <color name="ddw_accent">#F2B544</color>
+</resources>
