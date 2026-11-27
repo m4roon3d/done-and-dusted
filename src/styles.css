@@ -958,3 +958,9 @@ body:not([data-view="dash"]) .subbar{display:flex}
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.wk-row{animation:none}}
 .wk-row{min-width:0}.wk-day b{white-space:nowrap}
+/* ---------- category picker in Add a task, and on voice cards ---------- */
+.cat-pick{flex-wrap:wrap;overflow:visible;margin:10px 0 2px;align-items:center}
+.cat-pick .cp-k{font-weight:700;font-size:.86rem;margin-right:2px;width:100%}
+.cat-pick .chip{min-height:38px;padding:0 13px;font-size:.9rem}
+#addForm~.cat-pick{display:flex}
+.dcat{font:inherit;font-weight:700;font-size:.82rem;border:1.5px solid var(--line);border-radius:99px;background:var(--surface);padding:3px 8px;max-width:150px}
