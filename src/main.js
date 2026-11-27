@@ -212,22 +212,50 @@ function partOfDay(){const h=new Date().getHours();return h<5?"Working late":h<1
 function fmtMins(m){return m>=60?(m%60?`${Math.floor(m/60)}h ${m%60}m`:`${m/60}h`):`${m} min`}
 function parseHint(){return tasks.length<5?'<span>Try <b>#Home</b>, <b>fri 5pm</b>, <b>!</b> for important, <b>every monday</b>.</span>':""}
 const q=$("#quick");
+let catPick=null; // a category tapped in the Add pop-up; it wins over what the words suggest
+/* parseQuick, plus: a category you already use, said as "…in Home", "…for Finance", "…to my Work list", counts like #Home */
+function parseAdd(v){
+  const p=parseQuick(v);
+  if(p.catGuessed){
+    const known=[...new Set(view().map(t=>t.cat))].sort((a,b)=>b.length-a.length);
+    for(const c of known){
+      const re=new RegExp(`(?:^|\\s)(?:in|for|under|to|into)\\s+(?:the\\s+|my\\s+)?${c.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/[\s-]+/g,"[\\s-]+")}(?:\\s+(?:list|category))?(?=\\s|$|[.,!])`,"i");
+      if(re.test(p.title)){const t=p.title.replace(re," ").replace(/\s+/g," ").trim();if(t){p.title=t;p.cat=c;p.catGuessed=false;p.catWord=true}break}
+    }
+  }
+  if(catPick){p.cat=catPick;p.catGuessed=false}
+  return p;
+}
+function catPickHTML(p){
+  const all=[...new Set([...view().map(t=>t.cat),"Home","Work","Personal"])].sort((a,b)=>a.localeCompare(b));
+  const cur=p?p.cat:null;
+  return `<span class="cp-k">Category</span>`+all.map(c=>`<button type="button" class="chip" data-cpick="${esc(c)}" aria-pressed="${cur===c}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)}</button>`).join("")+
+    `<button type="button" class="chip" data-cpick="__new">+ New</button>`;
+}
+function drawCatPick(p){const el=$("#catPick");if(el)el.innerHTML=catPickHTML(p)}
+$("#catPick").addEventListener("click",e=>{
+  const b=e.target.closest("[data-cpick]");if(!b)return;haptic();
+  if(b.dataset.cpick==="__new"){catPick=null;q.value=q.value.replace(/(^|\s)#\S*/g," ").replace(/\s+$/,"")+" #";q.focus();q.setSelectionRange(q.value.length,q.value.length);q.dispatchEvent(new Event("input"));return}
+  catPick=catPick===b.dataset.cpick?null:b.dataset.cpick;
+  q.value=q.value.replace(/(^|\s)#\S*/g," ").replace(/\s{2,}/g," ");q.dispatchEvent(new Event("input"));
+});
 q.addEventListener("input",()=>{
   const v=q.value.trim();
-  if(!v){$("#parse").innerHTML=parseHint();return}
-  const p=parseQuick(v);
-  $("#parse").innerHTML=`<span class="pchip" style="color:${cc(p.cat)}">● ${esc(p.cat)}${p.catGuessed?" (guessed)":""}</span>`+
+  if(/(^|\s)#\S/.test(v))catPick=null; // typing #Something takes over from a tapped category
+  if(!v){$("#parse").innerHTML=parseHint();drawCatPick(catPick?{cat:catPick}:null);return}
+  const p=parseAdd(v);drawCatPick(p);
+  $("#parse").innerHTML=`<span class="pchip" style="color:${cc(p.cat)}">● ${esc(p.cat)}${p.catGuessed?(p.cat==="Inbox"?" (pick one below)":" (guessed)"):""}</span>`+
    (p.due?`<span class="pchip">⏰ ${esc(fmtDue(p.due))}</span>`:`<span class="pchip">No date</span>`)+(p.rep?`<span class="pchip">↻ ${esc(repLabel(p.rep))}</span>`:"")+(p.pri?`<span class="pchip" style="color:var(--danger)">Important</span>`:"")+(p.who?`<span class="pchip">👤 ${esc(p.who)}</span>`:"")+(p.effort?`<span class="pchip">${p.effort==="quick"?"⚡ Quick":"⛰ Big"}${p.mins?" · "+fmtMins(p.mins):""}</span>`:p.mins?`<span class="pchip">⏱ ${fmtMins(p.mins)}</span>`:"");
 });
 $("#addForm").addEventListener("submit",e=>{
   e.preventDefault();const v=q.value.trim();
-  const p=v?parseQuick(v):null;
+  const p=v?parseAdd(v):null;
   if(!p||!p.title){const f=$("#addForm");f.classList.remove("shake");void f.offsetWidth;f.classList.add("shake");q.focus();return}
   if(examples){examples=false;animIn=true}
   const nid=uid();lastAdded=nid;haptic();
   const br=$("#addForm button").getBoundingClientRect();burst(br.left+br.width/2,br.top+br.height/2,14,[tok(catVar(p.cat)),tok("--accent")],.7);
   save({id:nid,title:titleCase(p.title),cat:p.cat,due:p.due,pri:p.pri,rep:p.rep||null,who:p.who||null,effort:p.effort||null,mins:p.mins||null,done:false,doneAt:null,createdAt:Date.now(),src:"manual"});
-  q.value="";q.dispatchEvent(new Event("input"));
+  catPick=null;q.value="";q.dispatchEvent(new Event("input"));
   toast({t:"Added",s:`${titleCase(p.title)}${p.due?" · "+fmtDue(p.due):""}${p.rep?" · repeats "+repLabel(p.rep).toLowerCase():""}`,ttl:2500});
   afterAdd();
 });
@@ -536,7 +564,7 @@ let listOpen=false;
 function showSheet(id){const s=$(id);s.hidden=false;requestAnimationFrame(()=>s.classList.add("open"))}
 function hideSheet(id){const s=$(id);if(s.hidden)return;s.classList.remove("open");setTimeout(()=>{s.hidden=true},250)}
 function openAdd(focus=true,pre=""){ // pre: words to start with, e.g. "#Home" or "tomorrow", so the task lands where it was added
-  haptic();if(pre&&!q.value.trim()){q.value=" "+pre;q.dispatchEvent(new Event("input"))}
+  haptic();if(!q.value.trim())catPick=null;if(pre&&!q.value.trim())q.value=" "+pre;q.dispatchEvent(new Event("input"));
   showSheet("#addSheet");if(focus)setTimeout(()=>{q.focus();if(pre)q.setSelectionRange(0,0)},60)}
 function closeAdd(){closeDict();hideSheet("#addSheet");q.blur()}
 function afterAdd(){closeAdd();if(currentView==="import")setView(HOME)}
@@ -572,12 +600,18 @@ const DLANGS=[["en-IN","English"],["hi-IN","हिन्दी"],["kn-IN","ಕ�
 function langsHTML(){const cur=pref("dictLang")||"en-IN";
   return `<div class="dict-langs" role="group" aria-label="Language you speak">${DLANGS.map(([c,n])=>`<button class="chip" data-lang="${c}" lang="${c}" aria-pressed="${c===cur}">${n}</button>`).join("")}</div>`}
 function closeDict(){stopListening();dict.open=false;dict.text="";dict.items=[];dict.note="";dictEl.hidden=true;dictEl.innerHTML=""}
+function catOptions(sel){const all=[...new Set([...view().map(x=>x.cat),...Object.keys(KNOWN)])];if(sel&&!all.includes(sel))all.unshift(sel);return all.map(c=>`<option${c===sel?" selected":""}>${esc(c)}</option>`).join("")}
+function dcardHTML(x,i,canEdit){
+  const cat=canEdit?`<select class="dcat" data-dcat="${i}" aria-label="Category for ${esc(x.title)}" style="color:${cc(x.cat)}">${catOptions(x.cat)}</select>`
+    :`<span class="cat">${esc(x.cat)}${x.catGuessed&&x.cat!=="Inbox"?" (guessed)":""}</span>`;
+  return `<div class="dcard" style="--cc:${cc(x.cat)};--d:${Math.min(i,8)}"><span class="cdot"></span><div class="body"><div class="t">${x.pri?'<span class="cflag">! </span>':""}${esc(x.title)}</div>
+      <div class="meta">${cat}<span>${x.due?"⏰ "+esc(fmtDue(x.due)):"No date"}</span>${x.pri?'<span class="flag">● Important</span>':""}</div></div>
+      ${canEdit?`<button class="more" data-drop="${i}" aria-label="Remove this task">✕</button>`:""}</div>`;
+}
 function drawDict(liveOnly){
   if(!dict.open){dictEl.hidden=true;return}
   dictEl.hidden=false;
-  const cards=dict.items.map((x,i)=>`<div class="dcard" style="--cc:${cc(x.cat)};--d:${Math.min(i,8)}"><span class="cdot"></span><div class="body"><div class="t">${x.pri?'<span class="cflag">! </span>':""}${esc(x.title)}</div>
-      <div class="meta"><span class="cat">${esc(x.cat)}${x.catGuessed&&x.cat!=="Inbox"?" (guessed)":""}</span><span>${x.due?"⏰ "+esc(fmtDue(x.due)):"No date"}</span>${x.pri?'<span class="flag">● Important</span>':""}</div></div>
-      ${dict.listening?"":`<button class="more" data-drop="${i}" aria-label="Remove this task">✕</button>`}</div>`).join("");
+  const cards=dict.items.map((x,i)=>dcardHTML(x,i,!dict.listening)).join("");
   // while listening, only the transcript and cards change, so the text box keeps its cursor when editing afterwards
   if(liveOnly&&dictEl.querySelector("#dictLive")){
     dictEl.querySelector("#dictLive").textContent=dict.text||"Listening…";
@@ -608,10 +642,12 @@ function drawDict(liveOnly){
   if(dict.listening){$("#dictStop").onclick=stopListening;return}
   const ta=$("#dictText");
   ta.oninput=()=>{dict.text=ta.value;reparse();
-    $("#dictCards").innerHTML=dict.items.map((x,i)=>`<div class="dcard" style="--cc:${cc(x.cat)}"><span class="cdot"></span><div class="body"><div class="t">${x.pri?'<span class="cflag">! </span>':""}${esc(x.title)}</div><div class="meta"><span class="cat">${esc(x.cat)}</span><span>${x.due?"⏰ "+esc(fmtDue(x.due)):"No date"}</span>${x.pri?'<span class="flag">● Important</span>':""}</div></div></div>`).join("");
+    $("#dictCards").innerHTML=dict.items.map((x,i)=>dcardHTML(x,i,true)).join("");
     const b=$("#dictAdd"),k=dict.items.length;b.disabled=!k;b.textContent=`Add ${k||""} task${k===1?"":"s"}`};
   $("#dictMore").onclick=startListening;
   $("#dictCards").onclick=e=>{const b=e.target.closest("[data-drop]");if(!b)return;dict.items.splice(+b.dataset.drop,1);drawDictAfterDrop()};
+  $("#dictCards").onchange=e=>{const s=e.target.closest("[data-dcat]");if(!s)return;const x=dict.items[+s.dataset.dcat];if(!x)return;
+    x.cat=s.value;x.catGuessed=false;haptic();const card=s.closest(".dcard");card.style.setProperty("--cc",cc(x.cat));s.style.color=cc(x.cat)};
   $("#dictAdd").onclick=()=>{
     const now=Date.now(),list=dict.items.map((x,i)=>({id:uid()+i,title:x.title,cat:x.cat,due:x.due,pri:x.pri,rep:x.rep||null,who:x.who||null,effort:x.effort||null,mins:x.mins||null,done:false,doneAt:null,createdAt:now+i,src:"voice"}));
     if(!list.length)return;
@@ -626,7 +662,7 @@ function drawDict(liveOnly){
 function drawDictAfterDrop(){ // a card was removed by hand: keep the remaining cards as they are
   const keep=dict.items.slice();drawDict();dict.items=keep;
   const n=keep.length,b=$("#dictAdd");if(b){b.disabled=!n;b.textContent=`Add ${n||""} task${n===1?"":"s"}`}
-  $("#dictCards").innerHTML=keep.map((x,i)=>`<div class="dcard" style="--cc:${cc(x.cat)}"><span class="cdot"></span><div class="body"><div class="t">${x.pri?'<span class="cflag">! </span>':""}${esc(x.title)}</div><div class="meta"><span class="cat">${esc(x.cat)}</span><span>${x.due?"⏰ "+esc(fmtDue(x.due)):"No date"}</span>${x.pri?'<span class="flag">● Important</span>':""}</div></div><button class="more" data-drop="${i}" aria-label="Remove this task">✕</button></div>`).join("");
+  $("#dictCards").innerHTML=keep.map((x,i)=>dcardHTML(x,i,true)).join("");
 }
 
 /* ---------- views ---------- */
