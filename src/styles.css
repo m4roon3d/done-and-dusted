@@ -964,3 +964,6 @@ body:not([data-view="dash"]) .subbar{display:flex}
 .cat-pick .chip{min-height:38px;padding:0 13px;font-size:.9rem}
 #addForm~.cat-pick{display:flex}
 .dcat{font:inherit;font-weight:700;font-size:.82rem;border:1.5px solid var(--line);border-radius:99px;background:var(--surface);padding:3px 8px;max-width:150px}
+/* in the Add pop-up the hint stays put, so tapping Close while typing does not shift the buttons under your finger */
+#addSheet .parse{display:flex}
+#addSheet .parse:empty{display:none}

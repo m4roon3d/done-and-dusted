@@ -19,7 +19,6 @@ applyLook(); // before anything draws
 import JSZip from "jszip";
 import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation, collapseRepeats, briefText, REPEATS, repLabel, nextDue } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
-import { doBackup } from "./settings.js";
 import { infoBtn, infoText, wireInfo } from "./info.js";
 import { initWidget, pushWidget } from "./widget.js";
 import { holidayOn } from "./holidays.js";
@@ -525,7 +524,6 @@ function steps(){
     ...(canDictate?[["voice","Say a task out loud",real.some(t=>t.src==="voice"),"Tap the mic and speak. Say several at once."]]:[]),
     ["done","Finish one",real.some(t=>t.done),"Tap a task on the map, then Done."],
     ["plan","Plan your week",!!pref("autoPlanned"),"Tap ✦ Plan my week. Tasks without a day get spread over the week."],
-    ["backup","Save a backup",!!pref("backedUp"),`Your tasks live only ${WHERE}. Keep a copy safe.`],
   ];
 }
 function getDustedHTML(){
@@ -537,20 +535,15 @@ function getDustedHTML(){
     <div class="gd-bar" aria-hidden="true"><i style="width:${Math.round(n/st.length*100)}%"></i></div>
     <ul class="gd-list">${st.map(([k,t,ok,sub])=>`<li class="${ok?"ok":""}${k===next?" next":""}"><button data-gd="${k}"${ok?" disabled":""}><span class="gd-tick" aria-hidden="true">${ok?"✓":""}</span><span><b>${t}</b>${k===next?`<small>${sub}</small>`:""}</span></button></li>`).join("")}</ul></div>`;
 }
-function dataNoteDue(){return !examples&&tasks.length>=5&&!pref("backedUp")&&!pref("dataNoteOk")}
-function dataNoteHTML(){return `<div class="note" style="--d:0"><span>Your tasks live only ${WHERE}. No account, no cloud. A backup keeps them safe.</span><span class="note-acts"><button id="dnBackup">Save a backup</button><button id="dnOk">Later</button></span></div>`}
 function wireOnboard(el){
   const b=id=>el.querySelector("#"+id);
   if(b("goFresh"))b("goFresh").onclick=()=>{setPref("start","fresh");examples=false;animIn=true;render();openAdd()};
   if(b("gdHide"))b("gdHide").onclick=()=>{setPref("gdHidden",true);render()};
-  if(b("dnOk"))b("dnOk").onclick=()=>{setPref("dataNoteOk",true);render()};
-  if(b("dnBackup"))b("dnBackup").onclick=()=>doBackup();
   el.querySelectorAll("[data-gd]").forEach(x=>x.onclick=()=>{
     const k=x.dataset.gd;haptic();
     if(k==="add"||k==="time"){openAdd();if(k==="time"&&!q.value){q.value="Call the plumber tomorrow 6pm";q.dispatchEvent(new Event("input"));q.select()}}
     else if(k==="voice"){openAdd(false);setTimeout(()=>micBtn.click(),300)}
     else if(k==="plan")autoPlan();
-    else if(k==="backup")doBackup();
     else if(k==="done")el.querySelector(".task-tile:not(.done)")?.focus();
   });
 }
@@ -862,17 +855,10 @@ function rowHTML(t){
 /* ---------- dashboard ---------- */
 /* The Dashboard's parts, in the order they show. All are on until the person hides them. */
 const DASH=[["map","Task map"],["tiles","Summary numbers"],["heat","Status heatmap"],["ring","Today's progress"],["cats","By category"],["week","Coming up"],["chart","Last 14 days"],["rem","Reminders"]];
-let dashEdit=false,dashOpening=false; // dashOpening: animate the chips panel only as it opens
-function dashBarHTML(hide){
-  return `<div class="dash-bar"><button class="btn sm" id="dashEdit" aria-expanded="${dashEdit}" aria-controls="dashPick">${dashEdit?"Done":"Customise"}</button></div>`+
-  (dashEdit?`<div class="dash-pick${dashOpening?" in":""}" id="dashPick"><p>Tap a part to show or hide it on the Dashboard.</p>
-    <div class="dash-chips" role="group" aria-label="Show on the Dashboard">${DASH.map(([k,n])=>`<button class="chip" data-dash="${k}" aria-pressed="${!hide.has(k)}">${n}</button>`).join("")}</div>
-    ${hide.size?`<button class="btn sm" id="dashReset">Show all</button>`:""}</div>`:"");
-}
 /* Notes that sit above the Task map on the home screen: getting started, backup, weekly dust-off, examples */
 function homeNotesHTML(){
   let h="";
-  if(!examples){const g=getDustedHTML();if(g)h+=g;else if(dataNoteDue())h+=dataNoteHTML()}
+  if(!examples){const g=getDustedHTML();if(g)h+=g}
   if(dustOffDue()){const n=staleTasks().length;h+=`<div class="note dust-note" style="--d:0"><span>🧹 <b>Weekly dust-off.</b> ${n} tasks are gathering dust. Two minutes to sort them.</span><span class="note-acts"><button id="doGo">Start</button><button id="doLater">Not now</button></span></div>`}
   if(examples) h+=`<div class="note" style="--d:0"><span>These are example tasks so you can see how Done &amp; Dusted works. They vanish when you add a task or import from Keep.</span><span class="note-acts"><button id="goFresh">Start fresh</button><button id="goImp">Import from Keep</button></span></div>`;
   return h;
@@ -944,17 +930,10 @@ function renderDash(list,now,t0){
     if(k==="cats"&&on("ring"))continue;
     parts.push(P[k]);
   }
-  h=h+(parts.join("")||`<div class="empty dash-empty">Every part of this screen is hidden. Tap Customise to bring some back.</div>`)+dashBarHTML(hide);
+  h=h+(parts.join("")||`<div class="empty dash-empty">Every part of this screen is hidden. Turn some back on in Settings → Home screen.</div>`);
   el.classList.toggle("dash-in",animIn);
   el.innerHTML=h;
   if(animIn)el.querySelectorAll("[data-n]").forEach(n=>countUp(n,+n.dataset.n));
-  dashOpening=false;
-  $("#dashEdit").onclick=()=>{dashEdit=!dashEdit;dashOpening=dashEdit;haptic();render()};
-  el.querySelectorAll("[data-dash]").forEach(b=>b.onclick=()=>{
-    const hid=new Set(pref("dashHidden")||[]),k=b.dataset.dash;
-    hid.has(k)?hid.delete(k):hid.add(k);setPref("dashHidden",[...hid]);haptic();render();
-  });
-  const dr=$("#dashReset");if(dr)dr.onclick=()=>{setPref("dashHidden",[]);haptic();render()};
   const tw=el.querySelector(".tm-wrap");
   if(tw)tw.addEventListener("click",e=>{
     const go=e.target.closest("[data-tmgo]"),tk=e.target.closest("[data-tid]"),b=e.target.closest("[data-tcat]"),sd=e.target.closest("[data-tmdone]"),dy=e.target.closest("[data-tday]"),up=e.target.closest("[data-tmup]");
@@ -1761,7 +1740,7 @@ setTimeout(checkDue,1500);
 
 /* shared with settings.js */
 async function calAccess(){try{const Cal=await calPlugin();const r=await Cal.requestPermissions({permissions:["calendar"]});if(r.calendar==="granted"){calSync();return true}}catch{}return false}
-function appBridge(){return {openImport:()=>setView("import"),getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>syncOut(),calAccess,
+function appBridge(){return {homeParts:()=>DASH,openImport:()=>setView("import"),getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>syncOut(),calAccess,
   getCap:()=>cap,setCap:v=>{cap=v;lsSet("dd.cap",cap)},
   reload:async()=>{tasks=await loadAll();examples=wantExamples();animIn=true;render();syncOut()},
   isExamples:()=>examples,getPersisted:()=>persisted,

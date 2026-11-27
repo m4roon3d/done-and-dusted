@@ -112,6 +112,7 @@ export function closeSheet() {
 
 async function drawSheet() {
   const n = await countTasks().catch(() => 0);
+  const hidden = new Set(pref("dashHidden") || []), lastBk = pref("backedUp");
   const prot = isNative ? true : await isPersisted();
   const remLine = perm === "granted"
     ? (isNative ? "Phone notifications are allowed. Alerts arrive at each due time, even when the app is closed." : "Browser notifications are allowed, so you're alerted even when this tab is in the background.")
@@ -125,6 +126,12 @@ async function drawSheet() {
       ${pref("look") === "night" ? "" : switchHTML("swNight", pref("autoNight"), "Night Garden after dark", "Switch to the dark look when the phone is in dark mode")}
       ${pref("look") !== "night" && effectiveLook().id === "night" ? `<p>Showing Night Garden now because your phone is in dark mode.</p>` : ""}
       ${switchHTML("swSplash", pref("splashSound"), "Opening music", "The little tune with the animation when the app opens")}
+    </section>
+    <section class="sset">
+      <h3>Home screen</h3>
+      <p>Tap a part to show or hide it on the home screen.</p>
+      <div class="dash-chips" role="group" aria-label="Show on the home screen">${app.homeParts().map(([k, nm]) => `<button class="chip" data-dash="${k}" aria-pressed="${!hidden.has(k)}">${esc(nm)}</button>`).join("")}</div>
+      ${hidden.size ? `<div class="acts"><button class="btn sm" id="sDashAll">Show all</button></div>` : ""}
     </section>
     <section class="sset">
       <h3>Alerts</h3>
@@ -143,7 +150,8 @@ async function drawSheet() {
     </section>
     <section class="sset">
       <h3>Backup</h3>
-      <p>Your tasks are stored only on this ${isNative ? "phone" : "device, in this browser"}. Save a backup now and then, and use it to move your tasks to another phone or browser.</p>
+      <p>Your tasks are stored only on this ${isNative ? "phone" : "device, in this browser"}. No account, no cloud. Save a backup now and then, and use it to move your tasks to another phone or browser.</p>
+      <p class="bk-last">${typeof lastBk === "number" ? `Last backup: <b>${esc(new Date(lastBk).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }))}</b>` : "<b>No backup saved yet.</b>"}</p>
       <div class="acts"><button class="btn pri" id="sBackup">Save a backup</button><button class="btn" id="sRestore">Restore from backup</button></div>
       <div id="restoreBox"></div>
     </section>
@@ -172,6 +180,11 @@ async function drawSheet() {
     <p class="about">Done &amp; Dusted ${VERSION} · ${isNative ? (platform === "ios" ? "iPhone" : "Android") : "Web"} · Plan it · Do it · Dust it</p>`;
   const b = (id) => document.getElementById(id);
   b("sImport").onclick = () => { closeSheet(); app.openImport(); };
+  document.querySelectorAll("#sheetBody [data-dash]").forEach((x) => x.onclick = () => {
+    const hid = new Set(pref("dashHidden") || []), k = x.dataset.dash;
+    hid.has(k) ? hid.delete(k) : hid.add(k); setPref("dashHidden", [...hid]); haptic(); app.render(); drawSheet();
+  });
+  if (b("sDashAll")) b("sDashAll").onclick = () => { setPref("dashHidden", []); haptic(); app.render(); drawSheet(); };
   document.querySelectorAll("[data-look-id]").forEach((btn) => { btn.onclick = () => changeLook(() => setLook(btn.dataset.lookId)); });
   if (b("swNight")) b("swNight").onchange = (e) => changeLook(() => setAutoNight(e.target.checked));
   b("swAlerts").onchange = (e) => setAlerts(e.target.checked);
