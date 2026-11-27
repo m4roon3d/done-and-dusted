@@ -535,7 +535,9 @@ $("#hdrAdd").onclick=()=>{haptic();setView(HOME);openAdd()};
 let listOpen=false;
 function showSheet(id){const s=$(id);s.hidden=false;requestAnimationFrame(()=>s.classList.add("open"))}
 function hideSheet(id){const s=$(id);if(s.hidden)return;s.classList.remove("open");setTimeout(()=>{s.hidden=true},250)}
-function openAdd(focus=true){haptic();showSheet("#addSheet");if(focus)setTimeout(()=>q.focus(),60)}
+function openAdd(focus=true,pre=""){ // pre: words to start with, e.g. "#Home" or "tomorrow", so the task lands where it was added
+  haptic();if(pre&&!q.value.trim()){q.value=" "+pre;q.dispatchEvent(new Event("input"))}
+  showSheet("#addSheet");if(focus)setTimeout(()=>{q.focus();if(pre)q.setSelectionRange(0,0)},60)}
 function closeAdd(){closeDict();hideSheet("#addSheet");q.blur()}
 function afterAdd(){closeAdd();if(currentView==="import")setView(HOME)}
 function openList(cat){filter=cat||"All";listOpen=true;animIn=true;showSheet("#listSheet");render()}
@@ -879,10 +881,9 @@ function renderDash(list,now,t0){
     <div class="tile" style="--d:3"><div class="k">Done · 7 days</div><div class="v" data-n="${weekDone}">${weekDone}</div><div class="s">${streak} day streak${streak>=3?" 🔥":""}</div></div>
   </div>`;
   if(tmCat&&!list.some(t=>t.cat===tmCat))tmCat=null;
-  const mode=pref("mapMode")||"week";
+  const mode=["cat","week","day"].includes(pref("mapMode"))?pref("mapMode"):"cat";
   P.map=`<div class="panel home-map" style="--d:0"><div class="map-head"><h4>Task map ${infoBtn("map")}</h4>
-      <div class="map-ctl"><div class="mode-seg" role="group" aria-label="Map view"><button data-mmode="day" aria-pressed="${mode==="day"}">Day</button><button data-mmode="week" aria-pressed="${mode==="week"}">Week</button></div>
-      <button class="map-add" id="mapAdd" aria-label="Add a task"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
+      <div class="mode-seg" role="group" aria-label="Map view">${[["cat","Category"],["week","Week"],["day","Today"]].map(([k,n])=>`<button data-mmode="${k}" aria-pressed="${mode===k}">${n}</button>`).join("")}</div></div>
     ${mapHTML(list,now,t0,mode)}
     ${open.length?`<button class="btn auto plan-btn" id="autoBtn"><span class="spark">✦</span> Plan my week</button>`:""}</div>`;
   P.heat=`<div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day ${infoBtn("heat")}</small></h4>${heatmapHTML(list,now,t0)}</div>`;
@@ -922,11 +923,13 @@ function renderDash(list,now,t0){
   if(tw)tw.addEventListener("click",e=>{
     const go=e.target.closest("[data-tmgo]"),tk=e.target.closest("[data-tid]"),b=e.target.closest("[data-tcat]"),sd=e.target.closest("[data-tmdone]"),dy=e.target.closest("[data-tday]"),up=e.target.closest("[data-tmup]");
     if(go){openList(tmCat);return}
+    const ad=e.target.closest("[data-addtile]");
+    if(ad){openAdd(true,ad.dataset.pre||"");return}
     if(dy){tmDay=dy.dataset.tday;animIn=true;haptic();render();return}
-    if(up){tmDay=null;animIn=true;haptic();render();return}
+    if(up){tmDay=null;tmCat=null;animIn=true;haptic();render();return}
     if(sd){tmDone=!tmDone;haptic();render();return}
     if(tk){tmTask=tk.dataset.tid;popEdit=false;hmSel=null;haptic();openDayPop();return} // same pop-up as a heatmap day
-    if(b){const c=b.dataset.tcat||null;tmCat=tmCat===c?null:c;animIn=true;haptic();render()}
+    if(b){tmCat=b.dataset.tcat||null;animIn=true;haptic();render()}
   });
   const hm=el.querySelector(".hm");
   if(hm)hm.addEventListener("click",e=>{
@@ -957,8 +960,7 @@ function renderDash(list,now,t0){
     if(it&&+it.dataset.rvi!==hmReview.idx){hmReview.idx=+it.dataset.rvi;redrawReview(true)}
   });
   const ab=el.querySelector("#autoBtn");if(ab)ab.onclick=()=>{haptic();autoPlan()};
-  const ma=el.querySelector("#mapAdd");if(ma)ma.onclick=()=>openAdd();
-  el.querySelectorAll("[data-mmode]").forEach(b=>b.onclick=()=>{setPref("mapMode",b.dataset.mmode);tmDay=null;animIn=true;haptic();render()});
+  el.querySelectorAll("[data-mmode]").forEach(b=>b.onclick=()=>{setPref("mapMode",b.dataset.mmode);tmDay=null;tmCat=null;animIn=true;haptic();render()});
   wireHomeNotes(el);
   wireRemindersPanel();
 }
@@ -1138,9 +1140,9 @@ function squarify(items,W,H){ // squarified treemap: items [{v}] -> same items w
   return out;
 }
 function treemapHTML(list,now,t0){
-  if(!list.length)return `<p class="rag-hint">Add tasks to see your task map.</p>`;
-  // the map is shorter when there are few categories; H keeps tiles roughly square on a phone-width panel (~340px)
-  const nCat=new Set(list.map(t=>t.cat)).size,px=nCat<=2?170:nCat<=4?230:300,W=1000,H=Math.round(W*px/340);
+  if(!list.length)return `<div class="tm-wrap"><div class="tm-empty"><b>Nothing here yet</b><span>Add your first task to get going.</span><button class="tm-empty-add" data-addtile data-pre="">+ Add a task</button></div></div>`;
+  // a big map: room for every category to be an easy tap; H keeps tiles roughly square on a phone-width panel (~340px)
+  const nCat=new Set(list.map(t=>t.cat)).size,px=nCat<=2?300:nCat<=4?360:420,W=1000,H=Math.round(W*px/340);
   let items;
   {
     const m={};list.forEach(t=>{(m[t.cat]=m[t.cat]||[]).push(t)});
@@ -1156,8 +1158,10 @@ function treemapHTML(list,now,t0){
     items.forEach(it=>{it.v=Math.sqrt(it.v)});
     const tot=items.reduce((s,it)=>s+it.v,0);
     items.forEach(it=>{it.v=Math.max(it.v,floor*tot)});
+    items.push({v:Math.max(floor*tot,tot*.07),add:true}); // the + tile sits last, in the corner
   }
   const tiles=squarify(items,W,H).map((b,i)=>{
+    if(b.add)return addTileHTML(b,W,H,i,"");
     const wpx=b.w/W*340,hpx=b.h/H*px; // approximate size on a phone
     const tiny=wpx<56||hpx<34,small=wpx<110||hpx<80,label=`${b.name}: ${b.sub}${b.sub2?", "+b.sub2:""}`,
       style=`left:${(b.x/W*100).toFixed(2)}%;top:${(b.y/H*100).toFixed(2)}%;width:${(b.w/W*100).toFixed(2)}%;height:${(b.h/H*100).toFixed(2)}%;--i:${Math.min(i,20)}`,
@@ -1172,7 +1176,8 @@ function treemapHTML(list,now,t0){
   }).join("");
   return `<div class="tm-wrap"><div class="tmap" role="group" aria-label="Categories" style="height:${px}px">${tiles}</div>
     <div class="hm-legend"><span><i style="background:var(--danger)"></i>Red · overdue</span><span><i style="background:var(--amber)"></i>Amber · due today or at risk</span><span><i style="background:var(--ok)"></i>Green · on track or done</span></div>
-    ${infoText("map","Bigger tiles have more tasks. Each tile is split into red, amber and green by its tasks. Tap a category to map its tasks.")}</div>`;
+    <div class="tm-foot"><span></span><button class="linkbtn" data-tmgo>See as a list</button></div>
+    ${infoText("map","Each tile is a category. Bigger tiles have more tasks, split into red (late), amber (due today or at risk) and green (on track or done). Tap one to see its tasks.")}</div>`;
 }
 /* Which tile of the week view a task sits in: "late" (open, due before today), a day start (ms), "later" or "none" */
 function dayKey(t,t0){
@@ -1183,70 +1188,71 @@ function dayKey(t,t0){
 }
 function dayName(k,t0){
   if(k==="late")return "Late";if(k==="none")return "No date";if(k==="later")return "Later";
-  const d=+k;return d===t0?"Today":d===t0+DAY?"Tomorrow":new Date(d).toLocaleDateString("en-IN",{weekday:"short",day:"numeric"});
+  const d=+k;return d===t0?"Today":d===t0+DAY?"Tomorrow":new Date(d).toLocaleDateString("en-IN",{weekday:"long"});
 }
-/* The Task map. Week: a tile per day (plus Late and No date), tap one to see its tasks. Day: today's and late tasks. */
+/* The Task map, three ways in, the same way down: Category, Week or Today -> task tiles -> the task pop-up. */
+function crumbHTML(back,here,sub){return `<div class="tm-head"><button class="btn tm-up" data-tmup aria-label="Back to ${esc(back)}">‹ ${esc(back)}</button><span class="tm-crumb"><b>${esc(here)}</b>${sub?" · "+esc(sub):""}</span></div>`}
+function dayWord(k,t0){const d=+k;return d===t0?"today":d===t0+DAY?"tomorrow":new Date(d).toLocaleDateString("en-IN",{weekday:"short"}).toLowerCase()}
 function mapHTML(list,now,t0,mode){
   if(mode==="day"){
     const pick=t=>t.due&&t.due<t0+DAY&&(!t.done||(t.doneAt||0)>=t0);
-    const rest=list.filter(t=>!t.done&&(!t.cat||!tmCat||t.cat===tmCat)&&!(t.due&&t.due<t0+DAY)).length;
-    const head=`<p class="tm-crumb day-crumb"><b>Today</b>${rest?` · ${rest} more later or without a date`:""}</p>`;
-    return taskTreemapHTML(list,now,t0,tmCat,pick,head,"Nothing due today. Enjoy the free day, or tap Week to look ahead.");
+    const rest=list.filter(t=>!t.done&&!(t.due&&t.due<t0+DAY)).length;
+    return taskTreemapHTML(list,now,t0,pick,`<p class="tm-crumb day-crumb"><b>Today</b>${rest?` · ${rest} more later or without a date`:""}</p>`,"today","Nothing due today. Tap Week to look ahead.");
   }
-  if(tmDay){
-    const k=tmDay,pick=t=>dayKey(t,t0)===k;
-    if(!list.some(t=>pick(t)&&(!tmCat||t.cat===tmCat)))tmDay=null;
-    else{
-      const head=`<div class="tm-head"><button class="btn tm-up" data-tmup aria-label="Back to the week">‹ Week</button><span class="tm-crumb"><b>${esc(dayName(k,t0))}</b>${k!=="late"&&k!=="none"&&k!=="later"?" · "+new Date(+k).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):""}</span></div>`;
-      return taskTreemapHTML(list,now,t0,tmCat,pick,head,"Nothing left here.");
+  if(mode==="week"){
+    if(tmDay){
+      const k=tmDay,pick=t=>dayKey(t,t0)===k;
+      if(list.some(pick)||/^\d+$/.test(k)){
+        const sub=/^\d+$/.test(k)&&+k>t0+DAY?new Date(+k).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):"";
+        return taskTreemapHTML(list,now,t0,pick,crumbHTML("Week",dayName(k,t0),sub),/^\d+$/.test(k)?dayWord(k,t0):"","A free day so far.");
+      }
+      tmDay=null;
     }
+    return weekRowsHTML(list,now,t0);
   }
-  return weekMapHTML(list,now,t0);
+  if(tmCat&&list.some(t=>t.cat===tmCat)){
+    const c=tmCat,all=list.filter(t=>t.cat===c),pct=Math.round(all.filter(t=>t.done).length/all.length*100);
+    return taskTreemapHTML(list,now,t0,t=>t.cat===c,crumbHTML("Categories",c,`${pct}% done`),"#"+c.replace(/\s+/g,"-"),"Nothing open in "+c+".");
+  }
+  tmCat=null;
+  return treemapHTML(list,now,t0);
 }
-function weekMapHTML(list,now,t0){
-  const cat=tmCat,inCat=list.filter(t=>!cat||t.cat===cat),colour=taskColours(list,now,t0);
-  const shown=inCat.filter(t=>tmDone||!t.done),doneN=inCat.filter(t=>t.done&&dayKey(t,t0)!=="past").length;
-  const m=cats(list),names=Object.keys(m).filter(c=>m[c].open||tmDone||c===cat).sort((x,y)=>(m[y].open-m[x].open)||x.localeCompare(y));
-  const chips=names.length>1||cat?`<div class="chips tm-chips" role="group" aria-label="Show a category"><button class="chip" data-tcat="" aria-pressed="${!cat}">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
-    names.map(c=>`<button class="chip" data-tcat="${esc(c)}" aria-pressed="${cat===c}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`:"";
-  const foot=`<div class="tm-foot">${doneN?`<button class="linkbtn" data-tmdone aria-pressed="${tmDone}">${tmDone?"Hide done":`Show done (${doneN})`}</button>`:"<span></span>"}<button class="linkbtn" data-tmgo>See as a list</button></div>`;
-  const keys=["late",...[...Array(7)].map((_,i)=>String(t0+i*DAY)),"later","none"];
+/* Week: one full-width row per day, all the same height, so every day is easy to tap. Late and No date rows when needed. */
+function weekRowsHTML(list,now,t0){
+  const colour=taskColours(list,now,t0),shown=list.filter(t=>tmDone||!t.done);
+  const doneN=list.filter(t=>t.done&&dayKey(t,t0)!=="past").length;
   const by={};shown.forEach(t=>{const k=dayKey(t,t0);(by[k]=by[k]||[]).push(t)});
-  const items=keys.filter(k=>by[k]||(k!=="late"&&k!=="later"&&k!=="none")).map(k=>{
+  const keys=["late",...[...Array(7)].map((_,i)=>String(t0+i*DAY)),"later","none"].filter(k=>by[k]||/^\d+$/.test(k));
+  const rows=keys.map((k,i)=>{
     const arr=by[k]||[],n={r:0,a:0,g:0};arr.forEach(t=>n[colour(t)]++);
-    const open=arr.filter(t=>!t.done).length;
-    return {v:arr.length,k,name:dayName(k,t0),sub:arr.length?(open?`${open} to do`:"All done"):"Free",
-      bands:["r","a","g"].map(x=>({k:x,n:n[x]})),empty:!arr.length};
-  });
-  if(!shown.length&&!list.length)return `<div class="tm-wrap"><div class="tm-empty"><b>Nothing here yet</b><span>Tap + to add your first task.</span></div></div>`;
-  // days with more tasks get bigger tiles; free days stay small but tappable
-  const floor=.045,tot=Math.max(1,items.reduce((s,it)=>s+it.v,0));
-  items.forEach(it=>{it.v=Math.max(Math.sqrt(it.v),floor*Math.sqrt(tot)*2,.35)});
-  const px=300,W=1000,H=Math.round(W*px/340);
-  const tiles=squarify(items,W,H).map((b,i)=>{
-    const wpx=b.w/W*340,hpx=b.h/H*px,small=wpx<90||hpx<60,tiny=wpx<46||hpx<30;
-    const style=`left:${(b.x/W*100).toFixed(2)}%;top:${(b.y/H*100).toFixed(2)}%;width:${(b.w/W*100).toFixed(2)}%;height:${(b.h/H*100).toFixed(2)}%;--i:${Math.min(i,20)}`;
-    const label=`${b.name}: ${b.sub}`,inner=tiny?"":`<span class="nm">${esc(b.name)}</span>${small&&b.empty?"":`<span class="sb">${esc(b.sub)}</span>`}`;
-    if(b.empty)return `<div class="tmap-tile day-free${small?" small":""}" style="${style}" role="img" aria-label="${esc(label)}" title="${esc(label)}"><span class="tlab">${inner}</span></div>`;
-    const bands=b.bands.filter(x=>x.n).map(x=>`<i class="${x.k}" style="flex-grow:${x.n}"></i>`).join("");
-    return `<button class="tmap-tile bands-tile${small?" small":""}" style="${style}" data-tday="${b.k}" aria-label="${esc(label)}" title="${esc(label)}"><span class="bands">${bands}</span><span class="tlab">${inner}</span></button>`;
+    const open=arr.filter(t=>!t.done).length,day=/^\d+$/.test(k);
+    const date=day&&+k>t0+DAY?new Date(+k).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):"";
+    const bands=["r","a","g"].filter(x=>n[x]).map(x=>`<i class="${x}" style="flex-grow:${n[x]}"></i>`).join("");
+    const names=arr.filter(t=>!t.done).slice(0,2).map(t=>t.title).join(" · ");
+    const label=`${dayName(k,t0)}${date?" "+date:""}: ${arr.length?(open?open+" to do":"all done"):"free"}`;
+    return `<div class="wk-row${arr.length?"":" free"}${k==="late"?" late":""}" style="--i:${i}">
+      <button class="wk-main" data-tday="${k}" aria-label="${esc(label)}"><span class="wk-day"><b>${esc(dayName(k,t0))}</b>${date?`<small>${esc(date)}</small>`:""}</span>
+        <span class="wk-bar">${arr.length?`<span class="bands">${bands}</span><span class="wk-txt"><b>${open?open+" to do":"All done ✓"}</b>${names?`<small>${esc(names)}</small>`:""}</span>`:`<span class="wk-txt"><small>Free</small></span>`}</span></button>
+      ${day?`<button class="wk-add" data-addtile data-pre="${dayWord(k,t0)}" aria-label="Add a task for ${esc(dayName(k,t0))}">+</button>`:""}</div>`;
   }).join("");
-  return `<div class="tm-wrap">${chips}<div class="tmap" role="group" aria-label="Your week" style="height:${px}px">${tiles}</div>
-    <div class="hm-legend"><span><i style="background:var(--danger)"></i>Late</span><span><i style="background:var(--amber)"></i>Due today or busy</span><span><i style="background:var(--ok)"></i>On track</span></div>
-    ${foot}
-    ${infoText("map","Each tile is a day. Bigger tiles have more tasks, and the colours show how they're going. Tap a day to see its tasks.")}</div>`;
+  return `<div class="tm-wrap"><div class="wk" role="group" aria-label="Your week">${rows}</div>
+    <div class="tm-foot">${doneN?`<button class="linkbtn" data-tmdone aria-pressed="${tmDone}">${tmDone?"Hide done":`Show done (${doneN})`}</button>`:"<span></span>"}<button class="linkbtn" data-tmgo>See as a list</button></div>
+    ${infoText("map","Each row is a day. The colours show how its tasks are going: red late, amber due today or busy, green on track. Tap a day to see its tasks, or + to add one for that day.")}</div>`;
 }
 /* Task map: one tile per task, for every category or the one picked in the chips above it.
    Colour = the task's RAG (done tasks green and struck through, shown only on "Show done").
    Size = how much it needs you: overdue 3, due today or at risk 2, on track 1.5, done 1; Important adds 1. */
-function taskTreemapHTML(list,now,t0,cat,pick=()=>true,head="",emptyMsg=""){
-  const inCat=list.filter(t=>(!cat||t.cat===cat)&&pick(t)),colour=taskColours(list,now,t0),RANK={r:0,a:1,g:2};
+function addTileHTML(b,W,H,i,pre){
+  const style=`left:${(b.x/W*100).toFixed(2)}%;top:${(b.y/H*100).toFixed(2)}%;width:${(b.w/W*100).toFixed(2)}%;height:${(b.h/H*100).toFixed(2)}%;--i:${Math.min(i,20)}`;
+  return `<button class="tmap-tile add-tile" style="${style}" data-addtile data-pre="${esc(pre||"")}" aria-label="Add a task"><span class="plus" aria-hidden="true">+</span><span class="add-l">Add</span></button>`;
+}
+function taskTreemapHTML(list,now,t0,pick=()=>true,head="",pre="",emptyMsg=""){
+  const cat=null,inCat=list.filter(pick),colour=taskColours(list,now,t0),RANK={r:0,a:1,g:2};
   const doneN=inCat.filter(t=>t.done).length,arr=tmDone?inCat:inCat.filter(t=>!t.done);
-  const m=cats(list),names=Object.keys(m).filter(c=>m[c].open||tmDone||c===cat).sort((x,y)=>(m[y].open-m[x].open)||x.localeCompare(y));
-  const chips=names.length>1||cat?`<div class="chips tm-chips" role="group" aria-label="Show a category"><button class="chip" data-tcat="" aria-pressed="${!cat}">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
-    names.map(c=>`<button class="chip" data-tcat="${esc(c)}" aria-pressed="${cat===c}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`:"";
+  const chips="";
   const foot=`<div class="tm-foot">${doneN?`<button class="linkbtn" data-tmdone aria-pressed="${tmDone}">${tmDone?"Hide done":`Show done (${doneN})`}</button>`:"<span></span>"}<button class="linkbtn" data-tmgo>See as a list</button></div>`;
-  if(!arr.length)return `<div class="tm-wrap">${chips}${head}<div class="tm-empty"><b>${list.length?"All done &amp; dusted ✨":"Nothing here yet"}</b><span>${list.length?(emptyMsg||"Nothing open"+(cat?" in "+esc(cat):"")+"."):"Tap + to add your first task."}</span></div>${list.length?foot:""}</div>`;
+  const addBtn=`<button class="tm-empty-add" data-addtile data-pre="${esc(pre)}">+ Add a task</button>`;
+  if(!arr.length)return `<div class="tm-wrap">${head}<div class="tm-empty"><b>${inCat.length?"All done &amp; dusted ✨":list.length?"Nothing here yet":"Nothing here yet"}</b><span>${list.length?(emptyMsg||"Nothing open."):"Add your first task to get going."}</span>${addBtn}</div>${list.length?foot:""}</div>`;
   const n={r:0,a:0,g:0};
   let items=arr.map(t=>{
     const k=colour(t);n[k]++;
@@ -1255,11 +1261,13 @@ function taskTreemapHTML(list,now,t0,cat,pick=()=>true,head="",emptyMsg=""){
       ord:t.done?3:RANK[k],due:t.due||Infinity};
   }).sort((a,b)=>a.ord-b.ord||a.due-b.due||a.name.localeCompare(b.name));
   // more tasks get a taller map so tiles stay big enough to tap
-  const px=arr.length<=3?190:arr.length<=8?250:arr.length<=16?320:Math.min(560,320+(arr.length-16)*12),W=1000,H=Math.round(W*px/340);
-  const floor=Math.min(.12,.5/items.length),tot=items.reduce((s,it)=>s+it.v,0);
+  const px=arr.length<=3?300:arr.length<=8?360:arr.length<=16?420:Math.min(600,420+(arr.length-16)*12),W=1000,H=Math.round(W*px/340);
+  const floor=Math.min(.12,.5/(items.length+1)),tot=items.reduce((s,it)=>s+it.v,0);
   items.forEach(it=>{it.v=Math.max(it.v,floor*tot)});
+  items.push({v:Math.max(floor*tot,tot*.06),add:true}); // the + tile sits last, in the corner
   const tiles=squarify(items,W,H).map((b,i)=>{
     const wpx=b.w/W*340,hpx=b.h/H*px,tiny=wpx<48||hpx<30,small=wpx<100||hpx<64;
+    if(b.add)return addTileHTML(b,W,H,i,pre);
     const label=`${b.name}: ${b.done?"done":RAGW[b.k].toLowerCase()}, ${b.sub}${b.pri&&!b.done?", Important":""}`;
     const style=`left:${(b.x/W*100).toFixed(2)}%;top:${(b.y/H*100).toFixed(2)}%;width:${(b.w/W*100).toFixed(2)}%;height:${(b.h/H*100).toFixed(2)}%;--i:${Math.min(i,20)}`;
     const inner=tiny?"":`<span class="nm">${b.pri&&!b.done?"● ":""}${esc(b.name)}</span>${small?"":`<span class="sb">${esc(b.sub)}</span>`}`;
