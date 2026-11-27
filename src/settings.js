@@ -8,7 +8,7 @@ import { makeBackup, readBackup, restore, countTasks, isPersisted, requestPersis
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const VERSION = "1.0 · build " + (typeof __APP_BUILD__ === "undefined" ? "dev" : __APP_BUILD__);
+const VERSION = "1.1 · build " + (typeof __APP_BUILD__ === "undefined" ? "dev" : __APP_BUILD__);
 let app = null;          // bridge into main.js
 let perm = "prompt", exact = "granted";
 let pendingRestore = null;
@@ -137,6 +137,11 @@ async function drawSheet() {
       ${pref("alerts") && isNative && platform === "android" && perm === "granted" && exact !== "granted" ? `<button class="btn" id="sExact">Allow exact alarms</button>` : ""}
     </section>
     <section class="sset">
+      <h3>Import</h3>
+      <p>Bring in your Google Keep notes, or paste a list, and they become tasks.</p>
+      <div class="acts"><button class="btn" id="sImport">Import from Google Keep</button></div>
+    </section>
+    <section class="sset">
       <h3>Backup</h3>
       <p>Your tasks are stored only on this ${isNative ? "phone" : "device, in this browser"}. Save a backup now and then, and use it to move your tasks to another phone or browser.</p>
       <div class="acts"><button class="btn pri" id="sBackup">Save a backup</button><button class="btn" id="sRestore">Restore from backup</button></div>
@@ -159,13 +164,14 @@ async function drawSheet() {
     </section>
     <section class="sset">
       <h3>Planning</h3>
-      ${isNative ? switchHTML("swCal", pref("calOnPlan"), "Calendar on Plan", "Show meetings from your phone's calendar, and keep task events in step both ways") : ""}
-      ${switchHTML("swFest", pref("festivals"), "Festivals and holidays", "Show Indian festivals and public holidays on Plan")}
+      ${isNative ? switchHTML("swCal", pref("calOnPlan"), "Use my calendar", "Plan my week leaves room for meetings, and task events stay in step both ways") : ""}
+      ${switchHTML("swFest", pref("festivals"), "Festivals and holidays", "Know about Indian festivals and public holidays")}
       ${switchHTML("swHolFree", pref("holidaysFree"), "Keep public holidays free", "Auto-plan won't put tasks on them")}
       <div class="cap" role="group" aria-label="Tasks per day"><button id="sCapDown" aria-label="Fewer per day">−</button><span>Up to <b>${app.getCap()}</b> tasks a day</span><button id="sCapUp" aria-label="More per day">+</button></div>
     </section>
     <p class="about">Done &amp; Dusted ${VERSION} · ${isNative ? (platform === "ios" ? "iPhone" : "Android") : "Web"} · Plan it · Do it · Dust it</p>`;
   const b = (id) => document.getElementById(id);
+  b("sImport").onclick = () => { closeSheet(); app.openImport(); };
   document.querySelectorAll("[data-look-id]").forEach((btn) => { btn.onclick = () => changeLook(() => setLook(btn.dataset.lookId)); });
   if (b("swNight")) b("swNight").onchange = (e) => changeLook(() => setAutoNight(e.target.checked));
   b("swAlerts").onchange = (e) => setAlerts(e.target.checked);

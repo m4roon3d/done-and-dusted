@@ -83,17 +83,16 @@ function startWidget(){
     done:id=>{const t=tasks.find(x=>x.id===id);if(t&&!t.done){save({...t,done:true,doneAt:Date.now()});toast({t:"Dusted from your widget ✓",s:t.title,ttl:2500,undo:()=>save({...t})})}},
     share:text=>{
       const clean=String(text).replace(/\s+/g," ").trim().slice(0,240);
-      closeOv();setView("tasks");q.value=clean;q.dispatchEvent(new Event("input"));
+      closeOv();setView(HOME);q.value=clean;q.dispatchEvent(new Event("input"));
       setTimeout(()=>{q.focus();q.setSelectionRange(clean.length,clean.length)},250);
       toast({t:"Shared in",s:"Add a date or #category if you like, then tap Add.",ttl:3500});
     },
-    import:code=>{setView("tasks");receiveList(code)},
+    import:code=>{setView(HOME);receiveList(code)},
     shortcut:k=>{
       closeOv();
-      if(k==="add"){setView("tasks");setTimeout(()=>q.focus(),250)}
-      else if(k==="dictate"){setView("tasks");setTimeout(()=>micBtn.click(),400)}
-      else if(k==="plan")setView("plan");
-      else {filter="All";setView("tasks")}
+      if(k==="add"){setView(HOME);setTimeout(()=>q.focus(),250)}
+      else if(k==="dictate"){setView(HOME);setTimeout(()=>micBtn.click(),400)}
+      else {tmCat=null;setView(HOME)}
     }});
   pushWidget(widgetData);
 }
@@ -156,7 +155,9 @@ async function saveMany(list,progress){
 }
 
 /* ---------- state ---------- */
-let filter="All",openEdit=null,currentView="tasks";
+let filter="All",openEdit=null,currentView="dash";
+const HOME="dash"; // the Task map is the home screen
+let tmDone=false,popEdit=false; // show finished tasks on the map; task pop-up in edit mode
 let animIn=true,lastAdded=null,prevGreet={today:null,over:null},D=0,doneOpen=false;
 const dueTodayOpen=()=>{const e=sod(Date.now()).getTime()+DAY;return view().filter(t=>!t.done&&t.due&&t.due<e).length};
 const alarms=new Map(); // id -> until timestamp
@@ -228,7 +229,7 @@ $("#addForm").addEventListener("submit",e=>{
   save({id:nid,title:titleCase(p.title),cat:p.cat,due:p.due,pri:p.pri,rep:p.rep||null,who:p.who||null,effort:p.effort||null,mins:p.mins||null,done:false,doneAt:null,createdAt:Date.now(),src:"manual"});
   q.value="";q.dispatchEvent(new Event("input"));
   toast({t:"Added",s:`${titleCase(p.title)}${p.due?" · "+fmtDue(p.due):""}${p.rep?" · repeats "+repLabel(p.rep).toLowerCase():""}`,ttl:2500});
-  setView("tasks");
+  if(currentView!=="tasks")setView(HOME);
 });
 
 /* ---------- keep the phone's reminders and the home-screen widget in step ---------- */
@@ -323,7 +324,7 @@ async function receiveList(code){
     if(examples)examples=false;
     tasks=[...tasks.filter(t=>!out.some(o=>o.id===t.id)),...out];
     try{await putTasks(out);told()}catch(e){failed(e)}
-    syncOut();closeOv();filter=got.cat;setView("tasks");rain();
+    syncOut();closeOv();tmCat=got.cat;setView(HOME);rain();
     toast({t:`${got.cat} list ${plan.add.length===n?"added":"updated"}`,s:[plan.add.length?`${plan.add.length} new`:"",plan.update.length?`${plan.update.length} updated`:"",plan.done.length?`${plan.done.length} ticked off`:""].filter(Boolean).join(" · "),ttl:3500});
   };
 }
@@ -469,7 +470,7 @@ function maybeWebBrief(){
   if(now<t0+(h*60+m)*6e4||pref("briefShown")===t0)return;
   setPref("briefShown",t0);
   const b=briefLine(now),hd=holidayOn(now);if(!b&&!hd)return;
-  toast({t:"Good morning ☀️"+(hd?" · Happy "+hd.name:""),s:b,sticky:true,actions:[["Plan my day",()=>setView("plan"),"go"]]});
+  toast({t:"Good morning ☀️"+(hd?" · Happy "+hd.name:""),s:b,sticky:true,actions:[["Plan my week",()=>{setView(HOME);autoPlan()},"go"]]});
 }
 
 /* ---------- onboarding: how to start, where data lives, a short checklist ---------- */
@@ -494,8 +495,8 @@ function steps(){
     ["add","Add your first task",real.length>0,"Type it in the box above, or import from Keep."],
     ["time","Give a task a time",real.some(t=>t.due),"Add “tomorrow 6pm” to a task. You'll get a reminder."],
     ...(canDictate?[["voice","Say a task out loud",real.some(t=>t.src==="voice"),"Tap the mic and speak. Say several at once."]]:[]),
-    ["done","Finish one",real.some(t=>t.done),isNative||matchMedia("(pointer:coarse)").matches?"Tap the circle, or swipe the task right.":"Tap the circle next to it."],
-    ["dash","Peek at the Dashboard",!!pref("sawDash"),"See what's overdue, your streak and the task map."],
+    ["done","Finish one",real.some(t=>t.done),"Tap a task on the map, then Done."],
+    ["plan","Plan your week",!!pref("autoPlanned"),"Tap ✦ Plan my week. Tasks without a day get spread over the week."],
     ["backup","Save a backup",!!pref("backedUp"),`Your tasks live only ${WHERE}. Keep a copy safe.`],
   ];
 }
@@ -520,19 +521,20 @@ function wireOnboard(el){
     const k=x.dataset.gd;haptic();
     if(k==="add"||k==="time"){q.focus();if(k==="time"&&!q.value){q.value="Call the plumber tomorrow 6pm";q.dispatchEvent(new Event("input"));q.select()}}
     else if(k==="voice")micBtn.click();
-    else if(k==="dash")setView("dash");
+    else if(k==="plan")autoPlan();
     else if(k==="backup")doBackup();
-    else if(k==="done")el.querySelector(".row:not(.done) .tick")?.focus();
+    else if(k==="done")el.querySelector(".task-tile:not(.done)")?.focus();
   });
 }
 
 /* ---------- dictation: speak several tasks, review, add ---------- */
 const dict={open:false,listening:false,text:"",items:[],session:null,note:""};
 const micBtn=$("#mic"),dictEl=$("#dict");
-$("#hdrAdd").onclick=()=>{haptic();setView("tasks");q.focus()};
+$("#hdrAdd").onclick=()=>{haptic();setView(HOME);q.focus()};
+$("#backHome").onclick=()=>{haptic();setView(HOME)};
 wireInfo($("#v-dash"),()=>render());
 let canDictate=false;
-dictationSupported().then(ok=>{micBtn.hidden=!ok;canDictate=ok;if(currentView==="tasks")render()});
+dictationSupported().then(ok=>{micBtn.hidden=!ok;canDictate=ok;if(currentView!=="import")render()});
 micBtn.onclick=()=>{dict.listening?stopListening():startListening()};
 function reparse(){dict.items=parseDictation(dict.text,[...new Set(tasks.map(t=>t.cat))])}
 async function startListening(){
@@ -603,7 +605,7 @@ function drawDict(liveOnly){
     lastAdded=list[list.length-1].id;
     closeDict();saveMany(list);
     toast({t:`Added ${list.length} task${list.length>1?"s":""}`,s:list.slice(0,3).map(t=>t.title).join(", ")+(list.length>3?"…":""),ttl:3500});
-    setView("tasks");
+    if(currentView!=="tasks")setView(HOME);
   };
 }
 function drawDictAfterDrop(){ // a card was removed by hand: keep the remaining cards as they are
@@ -613,17 +615,14 @@ function drawDictAfterDrop(){ // a card was removed by hand: keep the remaining 
 }
 
 /* ---------- views ---------- */
-document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
 function setView(v){
   const changed=currentView!==v;currentView=v;
-  const views=["tasks","plan","dash","import"];
-  $(".seg").style.setProperty("--i",views.indexOf(v));
-  document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
   $("#v-tasks").hidden=v!=="tasks";$("#v-plan").hidden=v!=="plan";$("#v-dash").hidden=v!=="dash";$("#v-import").hidden=v!=="import";
   if(v==="dash"&&!pref("sawDash"))setPref("sawDash",true);
   if(v==="plan"&&changed)setPref("planSeen",(pref("planSeen")||0)+1);
   document.body.dataset.view=v;
-  if(changed){animIn=true;if(v==="import"){const s=$("#v-import");s.classList.remove("view-in");void s.offsetWidth;s.classList.add("view-in")}}
+  $("#subTitle").textContent=v==="tasks"?(filter==="All"?"All tasks":filter):v==="import"?"Import":v==="plan"?"This week":"";
+  if(changed){animIn=true;scrollTo(0,0);if(v==="import"){const s=$("#v-import");s.classList.remove("view-in");void s.offsetWidth;s.classList.add("view-in")}}
   render();
 }
 
@@ -643,7 +642,7 @@ function render(){
   if(currentView==="tasks") renderTasks(list,now,t0);
   if(currentView==="dash") renderDash(list,now,t0);
   if(currentView==="plan") renderPlan(list,now,t0);
-  if(!$("#pop").hidden)drawDayPop(); // keep an open day pop-up in step with changes
+  if(!$("#pop").hidden&&!popEdit)drawDayPop(); // keep an open day pop-up in step with changes
   if(loaded)animIn=false;
 }
 
@@ -665,12 +664,6 @@ function renderTasks(list,now,t0){
     ["No date","",open.filter(t=>!t.due).sort((a,b)=>b.pri-a.pri||b.createdAt-a.createdAt)],
   ];
   let h="";D=0;
-  if(!tasks.length&&!pref("start")){ // first run: ask how they want to start
-    el.classList.toggle("enter",animIn);el.innerHTML=startHTML();wireStart(el);return;
-  }
-  if(!examples){const g=getDustedHTML();if(g)h+=g;else if(dataNoteDue())h+=dataNoteHTML()}
-  if(dustOffDue()){const n=staleTasks().length;h+=`<div class="note dust-note" style="--d:0"><span>🧹 <b>Weekly dust-off.</b> ${n} tasks are gathering dust. Two minutes to sort them.</span><span class="note-acts"><button id="doGo">Start</button><button id="doLater">Not now</button></span></div>`}
-  if(examples) h+=`<div class="note" style="--d:0"><span>These are example tasks so you can see how Done &amp; Dusted works. They vanish when you add a task or import from Keep.</span><span class="note-acts"><button id="goFresh">Start fresh</button><button id="goImp">Import from Keep</button></span></div>`;
   h+=`<div class="chips" role="group" aria-label="Filter by category"><button class="chip" aria-pressed="${filter==="All"}" data-f="All">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
      names.map((c,i)=>`<button class="chip" style="--d:${Math.min(i+1,10)}" aria-pressed="${filter===c}" data-f="${esc(c)}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`;
   if(!examples&&filter!=="All"&&tasks.some(t=>t.cat===filter&&!t.done))h+=`<div class="share-row"><button class="linkbtn" id="shareList">Share ${esc(filter)} list</button></div>`;
@@ -713,20 +706,7 @@ function renderTasks(list,now,t0){
     };
     r.querySelector(".more").onclick=()=>{openEdit=openEdit===t.id?null:t.id;render()};
     if(!t.done&&openEdit!==t.id)wireSwipe(r,t);
-    const f=r.querySelector(".edit");if(!f)return;
-    f.querySelector("[data-a=save]").onclick=()=>{
-      const v=n=>f.querySelector(`[name=${n}]`).value;
-      let cat=v("cat")==="__new"?titleCase(v("newcat")||"Inbox"):v("cat");
-      let due=v("due")?new Date(v("due")).getTime():null;const rp=v("rep")||null;
-      if(rp&&!due){const n=new Date(),d=sod(n);d.setHours(9,0,0,0);if(d<=n)d.setDate(d.getDate()+1);due=d.getTime(); // a repeat needs a first date
-        toast({t:"Starts "+fmtDue(due),s:"A repeating task needs a date, so it starts at the next 9am.",ttl:4000})}
-      openEdit=null;save({...t,title:v("title").trim()||t.title,cat,due,pri:+v("pri"),rep:rp,note:v("note"),reminded:due!==t.due?false:t.reminded});
-    };
-    const tm=f.querySelector("[data-a=tmr]");if(tm)tm.onclick=()=>{openEdit=null;snooze(t)};
-    const fo=f.querySelector("[data-a=focus]");if(fo)fo.onclick=()=>{openEdit=null;startFocus(t.id)};
-    f.querySelector("[data-a=del]").onclick=()=>{openEdit=null;remove(t);toast({t:"Deleted",s:t.title,ttl:4000,undo:()=>save(t)})};
-    f.querySelector("[data-a=cal]").onclick=()=>exportICS([t]);
-    const sel=f.querySelector("[name=cat]");sel.onchange=()=>{f.querySelector(".newcat").hidden=sel.value!=="__new"};
+    const f=r.querySelector(".edit");if(f)wireEditForm(f,t,()=>{openEdit=null});
   });
 }
 /* Swipe a task: right to finish it, left to move it to tomorrow. Touch and pen only; vertical drags still scroll. */
@@ -764,6 +744,37 @@ function wireSwipe(r,t){
   };
   r.addEventListener("pointerup",up);r.addEventListener("pointercancel",up);
 }
+/* The edit form for one task. Used in the list and in the task pop-up on the map; px keeps field ids unique. */
+function editFormHTML(t,px,inPop){
+  const all=[...new Set([...Object.keys(KNOWN),...view().map(x=>x.cat)])],id=`${px}-${esc(t.id)}`;
+  return `<div class="edit">
+      <label class="full">Task<input name="title" id="${id}-title" value="${esc(t.title)}"></label>
+      <label>Category<select name="cat" id="${id}-cat">${all.map(c=>`<option${c===t.cat?" selected":""}>${esc(c)}</option>`).join("")}<option value="__new">New category…</option></select>
+        <input class="newcat" name="newcat" id="${id}-new" placeholder="Category name" hidden></label>
+      <label>Due<input type="datetime-local" name="due" id="${id}-due" value="${toLocalInput(t.due)}"></label>
+      <label>Priority<select name="pri" id="${id}-pri"><option value="0"${!t.pri?" selected":""}>Normal</option><option value="1"${t.pri?" selected":""}>Important</option></select></label>
+      <label>Repeat<select name="rep" id="${id}-rep"><option value="">Doesn't repeat</option>${Object.entries(REPEATS).map(([k,n])=>`<option value="${k}"${t.rep===k?" selected":""}>${n}</option>`).join("")}</select></label>
+      <label class="full">Note<textarea name="note" id="${id}-note">${esc(t.note||"")}</textarea></label>
+      <div class="acts"><button class="btn pri" data-a="save">Save</button>${inPop?`<button class="btn" data-a="cancel">Cancel</button>`:""}${t.due?`<button class="btn" data-a="cal">Add to calendar</button>`:`<button class="btn" data-a="cal" hidden></button>`}${t.done||inPop?"":`<button class="btn" data-a="tmr">Move to tomorrow</button>`}${t.done?"":`<button class="btn" data-a="focus">Focus</button>`}${inPop?"":`<button class="btn warn" data-a="del">Delete</button>`}</div>
+    </div>`;
+}
+function wireEditForm(f,t,close){
+  f.querySelector("[data-a=save]").onclick=()=>{
+    const v=n=>f.querySelector(`[name=${n}]`).value;
+    let cat=v("cat")==="__new"?titleCase(v("newcat")||"Inbox"):v("cat");
+    let due=v("due")?new Date(v("due")).getTime():null;const rp=v("rep")||null;
+    if(rp&&!due){const n=new Date(),d=sod(n);d.setHours(9,0,0,0);if(d<=n)d.setDate(d.getDate()+1);due=d.getTime(); // a repeat needs a first date
+      toast({t:"Starts "+fmtDue(due),s:"A repeating task needs a date, so it starts at the next 9am.",ttl:4000})}
+    close();save({...t,title:v("title").trim()||t.title,cat,due,pri:+v("pri"),rep:rp,note:v("note"),reminded:due!==t.due?false:t.reminded});
+    toast({t:"Saved",s:v("title").trim()||t.title,ttl:2000});
+  };
+  const tm=f.querySelector("[data-a=tmr]");if(tm)tm.onclick=()=>{close();snooze(t)};
+  const fo=f.querySelector("[data-a=focus]");if(fo)fo.onclick=()=>{close();startFocus(t.id)};
+  const de=f.querySelector("[data-a=del]");if(de)de.onclick=()=>{close();remove(t);toast({t:"Deleted",s:t.title,ttl:4000,undo:()=>save(t)})};
+  const ca=f.querySelector("[data-a=cancel]");if(ca)ca.onclick=()=>{popEdit=false;drawDayPop()};
+  f.querySelector("[data-a=cal]").onclick=()=>exportICS([t]);
+  const sel=f.querySelector("[name=cat]");sel.onchange=()=>{f.querySelector(".newcat").hidden=sel.value!=="__new"};
+}
 function rowHTML(t){
   const now=Date.now(),late=!t.done&&t.due&&t.due<now;
   const mins=t.due?Math.round((t.due-now)/6e4):null;
@@ -792,25 +803,13 @@ function rowHTML(t){
      ${t.note?`<span style="overflow-wrap:anywhere">${esc(String(t.note).slice(0,80))}</span>`:""}
    </div></div>
    <button class="more" aria-label="Edit task" aria-expanded="${openEdit===t.id}">⋯</button>${today?'<span class="fuse" aria-hidden="true"></span>':""}`;
-  if(openEdit===t.id){
-    const all=[...new Set([...Object.keys(KNOWN),...view().map(x=>x.cat)])];
-    h+=`<div class="edit">
-      <label class="full">Task<input name="title" id="e-title-${esc(t.id)}" value="${esc(t.title)}"></label>
-      <label>Category<select name="cat" id="e-cat-${esc(t.id)}">${all.map(c=>`<option${c===t.cat?" selected":""}>${esc(c)}</option>`).join("")}<option value="__new">New category…</option></select>
-        <input class="newcat" name="newcat" id="e-new-${esc(t.id)}" placeholder="Category name" hidden></label>
-      <label>Due<input type="datetime-local" name="due" id="e-due-${esc(t.id)}" value="${toLocalInput(t.due)}"></label>
-      <label>Priority<select name="pri" id="e-pri-${esc(t.id)}"><option value="0"${!t.pri?" selected":""}>Normal</option><option value="1"${t.pri?" selected":""}>Important</option></select></label>
-      <label>Repeat<select name="rep" id="e-rep-${esc(t.id)}"><option value="">Doesn't repeat</option>${Object.entries(REPEATS).map(([k,n])=>`<option value="${k}"${t.rep===k?" selected":""}>${n}</option>`).join("")}</select></label>
-      <label class="full">Note<textarea name="note" id="e-note-${esc(t.id)}">${esc(t.note||"")}</textarea></label>
-      <div class="acts"><button class="btn pri" data-a="save">Save</button>${t.due?`<button class="btn" data-a="cal">Add to calendar</button>`:`<button class="btn" data-a="cal" hidden></button>`}${t.done?"":`<button class="btn" data-a="tmr">Move to tomorrow</button><button class="btn" data-a="focus">Focus</button>`}<button class="btn warn" data-a="del">Delete</button></div>
-    </div>`;
-  }
+  if(openEdit===t.id)h+=editFormHTML(t,"e");
   return h+`</div>`;
 }
 
 /* ---------- dashboard ---------- */
 /* The Dashboard's parts, in the order they show. All are on until the person hides them. */
-const DASH=[["tiles","Summary numbers"],["map","Task map"],["heat","Status heatmap"],["ring","Today's progress"],["cats","By category"],["week","Coming up"],["chart","Last 14 days"],["rem","Reminders"]];
+const DASH=[["map","Task map"],["tiles","Summary numbers"],["heat","Status heatmap"],["ring","Today's progress"],["cats","By category"],["week","Coming up"],["chart","Last 14 days"],["rem","Reminders"]];
 let dashEdit=false,dashOpening=false; // dashOpening: animate the chips panel only as it opens
 function dashBarHTML(hide){
   return `<div class="dash-bar"><button class="btn sm" id="dashEdit" aria-expanded="${dashEdit}" aria-controls="dashPick">${dashEdit?"Done":"Customise"}</button></div>`+
@@ -818,8 +817,25 @@ function dashBarHTML(hide){
     <div class="dash-chips" role="group" aria-label="Show on the Dashboard">${DASH.map(([k,n])=>`<button class="chip" data-dash="${k}" aria-pressed="${!hide.has(k)}">${n}</button>`).join("")}</div>
     ${hide.size?`<button class="btn sm" id="dashReset">Show all</button>`:""}</div>`:"");
 }
+/* Notes that sit above the Task map on the home screen: getting started, backup, weekly dust-off, examples */
+function homeNotesHTML(){
+  let h="";
+  if(!examples){const g=getDustedHTML();if(g)h+=g;else if(dataNoteDue())h+=dataNoteHTML()}
+  if(dustOffDue()){const n=staleTasks().length;h+=`<div class="note dust-note" style="--d:0"><span>🧹 <b>Weekly dust-off.</b> ${n} tasks are gathering dust. Two minutes to sort them.</span><span class="note-acts"><button id="doGo">Start</button><button id="doLater">Not now</button></span></div>`}
+  if(examples) h+=`<div class="note" style="--d:0"><span>These are example tasks so you can see how Done &amp; Dusted works. They vanish when you add a task or import from Keep.</span><span class="note-acts"><button id="goFresh">Start fresh</button><button id="goImp">Import from Keep</button></span></div>`;
+  return h;
+}
+function wireHomeNotes(el){
+  wireOnboard(el);
+  const gi=el.querySelector("#goImp");if(gi)gi.onclick=()=>setView("import");
+  if(el.querySelector("#doGo")){el.querySelector("#doGo").onclick=startDust;el.querySelector("#doLater").onclick=()=>{setPref("dustSkip",sod(Date.now()).getTime());render()}}
+}
 function renderDash(list,now,t0){
   const el=$("#v-dash");
+  if(!loaded){el.innerHTML='<div class="empty">Loading your tasks…</div>';return}
+  if(!tasks.length&&!pref("start")){ // first run: ask how they want to start
+    el.classList.toggle("enter",animIn);el.innerHTML=startHTML();wireStart(el);return;
+  }
   const open=list.filter(t=>!t.done),done=list.filter(t=>t.done);
   const overdue=open.filter(t=>t.due&&t.due<now);
   const todayAll=list.filter(t=>t.due&&t.due>=t0&&t.due<t0+DAY);
@@ -839,7 +855,7 @@ function renderDash(list,now,t0){
   const R=60,C=2*Math.PI*R;
   const next=open.filter(t=>t.due).sort((a,b)=>a.due-b.due).slice(0,4);
 
-  let h=examples?`<div class="note"><span>Dashboard is showing the example tasks.</span></div>`:"";
+  let h=homeNotesHTML();
   // each part is built on its own; the person picks which ones show (Customise)
   const P={};
   P.tiles=`<div class="tiles">
@@ -849,7 +865,7 @@ function renderDash(list,now,t0){
     <div class="tile" style="--d:3"><div class="k">Done · 7 days</div><div class="v" data-n="${weekDone}">${weekDone}</div><div class="s">${streak} day streak${streak>=3?" 🔥":""}</div></div>
   </div>`;
   if(tmCat&&!list.some(t=>t.cat===tmCat))tmCat=null;
-  P.map=`<div class="panel" style="--d:4"><h4>Task map <small>${tmCat?"tap a task":"tap a category"} ${infoBtn("map")}</small></h4>${tmCat?taskTreemapHTML(list,now,t0,tmCat):treemapHTML(list,now,t0)}</div>`;
+  P.map=`<div class="panel home-map" style="--d:0"><div class="map-head"><h4>Task map ${infoBtn("map")}</h4>${open.length?`<button class="btn auto" id="autoBtn"><span class="spark">✦</span> Plan my week</button>`:""}</div>${taskTreemapHTML(list,now,t0,tmCat)}</div>`;
   P.heat=`<div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day ${infoBtn("heat")}</small></h4>${heatmapHTML(list,now,t0)}</div>`;
   P.ring=`<div class="panel ring" style="--d:4"><svg viewBox="0 0 150 150" role="img" aria-label="Today ${Math.round(pct*100)} percent complete">
       <circle cx="75" cy="75" r="${R}" fill="none" stroke="var(--sunk)" stroke-width="14"/>
@@ -872,7 +888,7 @@ function renderDash(list,now,t0){
     if(k==="cats"&&on("ring"))continue;
     parts.push(P[k]);
   }
-  h=dashBarHTML(hide)+h+(parts.join("")||`<div class="empty dash-empty">Every part of the Dashboard is hidden. Tap Customise to bring some back.</div>`);
+  h=h+(parts.join("")||`<div class="empty dash-empty">Every part of this screen is hidden. Tap Customise to bring some back.</div>`)+dashBarHTML(hide);
   el.classList.toggle("dash-in",animIn);
   el.innerHTML=h;
   if(animIn)el.querySelectorAll("[data-n]").forEach(n=>countUp(n,+n.dataset.n));
@@ -885,11 +901,11 @@ function renderDash(list,now,t0){
   const dr=$("#dashReset");if(dr)dr.onclick=()=>{setPref("dashHidden",[]);haptic();render()};
   const tw=el.querySelector(".tm-wrap");
   if(tw)tw.addEventListener("click",e=>{
-    const up=e.target.closest("[data-tmup]"),go=e.target.closest("[data-tmgo]"),tk=e.target.closest("[data-tid]"),b=e.target.closest("[data-tcat]");
-    if(up){tmCat=null;animIn=true;haptic();render();return}
-    if(go){filter=go.dataset.tmgo;haptic();setView("tasks");return}
-    if(tk){tmTask=tk.dataset.tid;hmSel=null;haptic();openDayPop();return} // same pop-up as a heatmap day
-    if(b){tmCat=b.dataset.tcat;animIn=true;haptic();render()}
+    const go=e.target.closest("[data-tmgo]"),tk=e.target.closest("[data-tid]"),b=e.target.closest("[data-tcat]"),sd=e.target.closest("[data-tmdone]");
+    if(go){filter=tmCat||"All";haptic();setView("tasks");return}
+    if(sd){tmDone=!tmDone;haptic();render();return}
+    if(tk){tmTask=tk.dataset.tid;popEdit=false;hmSel=null;haptic();openDayPop();return} // same pop-up as a heatmap day
+    if(b){const c=b.dataset.tcat||null;tmCat=tmCat===c?null:c;animIn=true;haptic();render()}
   });
   const hm=el.querySelector(".hm");
   if(hm)hm.addEventListener("click",e=>{
@@ -919,6 +935,8 @@ function renderDash(list,now,t0){
     const it=e.target.closest("[data-rvi]");
     if(it&&+it.dataset.rvi!==hmReview.idx){hmReview.idx=+it.dataset.rvi;redrawReview(true)}
   });
+  const ab=el.querySelector("#autoBtn");if(ab)ab.onclick=()=>{haptic();autoPlan()};
+  wireHomeNotes(el);
   wireRemindersPanel();
 }
 /* ---------- Plan ---------- */
@@ -945,7 +963,7 @@ function postponeNudge(t){
   const cur=tasks.find(x=>x.id===t.id);if(!cur||cur.done)return;
   haptic("warn");
   toast({t:`Moved ${cur.moves} times`,s:`“${cur.title}” keeps slipping. Break it into a first small step, or let it go?`,sticky:true,actions:[
-    ["Break it down",()=>{setView("tasks");q.value=`First step: ${cur.title} today #${cur.cat}`;q.dispatchEvent(new Event("input"));q.focus();q.setSelectionRange(12,12+cur.title.length)},"go"],
+    ["Break it down",()=>{setView(HOME);q.value=`First step: ${cur.title} today #${cur.cat}`;q.dispatchEvent(new Event("input"));q.focus();q.setSelectionRange(12,12+cur.title.length)},"go"],
     ["Drop it",()=>{remove(cur);toast({t:"Dropped",s:cur.title,ttl:4000,undo:()=>save(cur)})}]]});
 }
 function placeOn(t,dayStart,now,slot=0){ // keep the task's time of day; if that's already past today, use the next free hour
@@ -983,7 +1001,7 @@ function autoPlan(){
     const placed=placeOn({...t,due:null},t0+i*DAY,now,Math.floor(load[i]));
     load[i]+=w(t);prev.push(t);next.push(placed);
   }
-  updateMany(next);
+  updateMany(next);setPref("autoPlanned",true);
   requestAnimationFrame(()=>flip(before,next.map(t=>t.id)));
   burstAt("#autoBtn",22);
   toast({t:`Planned ${next.length} task${next.length>1?"s":""}`,s:spill?`Your week is full, so ${spill} went on the lightest days.`:`Important and overdue first, up to ${cap} a day.`,ttl:5000,undo:()=>{const b=snapRects();updateMany(prev);requestAnimationFrame(()=>flip(b))}});
@@ -1133,10 +1151,17 @@ function treemapHTML(list,now,t0){
     <div class="hm-legend"><span><i style="background:var(--danger)"></i>Red · overdue</span><span><i style="background:var(--amber)"></i>Amber · due today or at risk</span><span><i style="background:var(--ok)"></i>Green · on track or done</span></div>
     ${infoText("map","Bigger tiles have more tasks. Each tile is split into red, amber and green by its tasks. Tap a category to map its tasks.")}</div>`;
 }
-/* Task map, one category: one tile per task. Colour = the task's RAG (done tasks green and struck through).
+/* Task map: one tile per task, for every category or the one picked in the chips above it.
+   Colour = the task's RAG (done tasks green and struck through, shown only on "Show done").
    Size = how much it needs you: overdue 3, due today or at risk 2, on track 1.5, done 1; Important adds 1. */
 function taskTreemapHTML(list,now,t0,cat){
-  const arr=list.filter(t=>t.cat===cat),colour=taskColours(list,now,t0),RANK={r:0,a:1,g:2};
+  const inCat=list.filter(t=>!cat||t.cat===cat),colour=taskColours(list,now,t0),RANK={r:0,a:1,g:2};
+  const doneN=inCat.filter(t=>t.done).length,arr=tmDone?inCat:inCat.filter(t=>!t.done);
+  const m=cats(list),names=Object.keys(m).filter(c=>m[c].open||tmDone||c===cat).sort((x,y)=>(m[y].open-m[x].open)||x.localeCompare(y));
+  const chips=names.length>1||cat?`<div class="chips tm-chips" role="group" aria-label="Show a category"><button class="chip" data-tcat="" aria-pressed="${!cat}">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
+    names.map(c=>`<button class="chip" data-tcat="${esc(c)}" aria-pressed="${cat===c}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`:"";
+  const foot=`<div class="tm-foot">${doneN?`<button class="linkbtn" data-tmdone aria-pressed="${tmDone}">${tmDone?"Hide done":`Show done (${doneN})`}</button>`:"<span></span>"}<button class="linkbtn" data-tmgo>See as a list</button></div>`;
+  if(!arr.length)return `<div class="tm-wrap">${chips}<div class="tm-empty"><b>${list.length?"All done &amp; dusted ✨":"Nothing here yet"}</b><span>${list.length?"Nothing open"+(cat?" in "+esc(cat):"")+". Add a task above.":"Type or say a task above to get started."}</span></div>${list.length?foot:""}</div>`;
   const n={r:0,a:0,g:0};
   let items=arr.map(t=>{
     const k=colour(t);n[k]++;
@@ -1144,8 +1169,8 @@ function taskTreemapHTML(list,now,t0,cat){
     return {v:(t.done?1:k==="r"?3:k==="a"?2:1.5)+(t.pri&&!t.done?1:0),id:t.id,k,name:t.title,sub,done:t.done,pri:t.pri,
       ord:t.done?3:RANK[k],due:t.due||Infinity};
   }).sort((a,b)=>a.ord-b.ord||a.due-b.due||a.name.localeCompare(b.name));
-  // same proportions as the category map; more tasks get a taller map so tiles stay tappable
-  const px=arr.length<=3?170:arr.length<=8?230:arr.length<=16?300:Math.min(520,300+(arr.length-16)*10),W=1000,H=Math.round(W*px/340);
+  // more tasks get a taller map so tiles stay big enough to tap
+  const px=arr.length<=3?190:arr.length<=8?250:arr.length<=16?320:Math.min(560,320+(arr.length-16)*12),W=1000,H=Math.round(W*px/340);
   const floor=Math.min(.12,.5/items.length),tot=items.reduce((s,it)=>s+it.v,0);
   items.forEach(it=>{it.v=Math.max(it.v,floor*tot)});
   const tiles=squarify(items,W,H).map((b,i)=>{
@@ -1155,14 +1180,11 @@ function taskTreemapHTML(list,now,t0,cat){
     const inner=tiny?"":`<span class="nm">${b.pri&&!b.done?"● ":""}${esc(b.name)}</span>${small?"":`<span class="sb">${esc(b.sub)}</span>`}`;
     return `<button class="tmap-tile task-tile ${b.k}${b.done?" done":""}${small?" small":""}" style="${style}" data-tid="${esc(b.id)}" aria-label="${esc(label)}" title="${esc(label)}">${inner}</button>`;
   }).join("");
-  const open=arr.filter(t=>!t.done).length,pct=Math.round((arr.length-open)/arr.length*100);
-  return `<div class="tm-wrap"><div class="tm-head">
-      <button class="btn tm-up" data-tmup aria-label="Back to all categories">‹ All categories</button>
-      <span class="tm-crumb"><b style="color:${cc(cat)}">${esc(cat)}</b> · ${arr.length} task${arr.length>1?"s":""} · ${pct}% done</span>
-      <button class="btn" data-tmgo="${esc(cat)}">Open list</button></div>
-    <div class="tmap" role="group" aria-label="${esc(cat)} tasks" style="height:${px}px">${tiles}</div>
-    <div class="hm-legend"><span><i style="background:var(--danger)"></i>Overdue ${n.r}</span><span><i style="background:var(--amber)"></i>Due today or at risk ${n.a}</span><span><i style="background:var(--ok)"></i>On track or done ${n.g}</span></div>
-    ${infoText("map","Bigger tiles need you sooner: overdue, then due today, then Important. Tap a task to see it and act on it.")}</div>`;
+  return `<div class="tm-wrap">${chips}
+    <div class="tmap" role="group" aria-label="${cat?esc(cat)+" tasks":"Your tasks"}" style="height:${px}px">${tiles}</div>
+    <div class="hm-legend"><span><i style="background:var(--danger)"></i>Late ${n.r}</span><span><i style="background:var(--amber)"></i>Today ${n.a}</span><span><i style="background:var(--ok)"></i>On track ${n.g}</span></div>
+    ${foot}
+    ${infoText("map","Each tile is a task. Red is late, amber is due today, green is on track. Bigger tiles need you sooner. Tap a task to finish it, move it, change it or delete it.")}</div>`;
 }
 /* One colour per task: Green = done, or open and on track · Amber = open and due today, Important, or on a day
    with 3+ open tasks · Red = open and past its time. A day's square is split by how many tasks are in each. */
@@ -1269,14 +1291,16 @@ function openDayPop(){
 function closeDayPop(){
   const pop=$("#pop");if(pop.hidden)return;
   const back=hmSel?document.querySelector(`.hm-cell[data-s="${hmSel.s}"]`):tmTask?document.querySelector(`.task-tile[data-tid="${CSS.escape(tmTask)}"]`):null;
-  hmSel=null;tmTask=null;document.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
+  hmSel=null;tmTask=null;popEdit=false;document.querySelectorAll(".hm-cell.sel").forEach(x=>x.classList.remove("sel"));
   pop.classList.remove("open");setTimeout(()=>{pop.hidden=true},250);
   back&&back.focus();
 }
 function drawDayPop(){ // returns false when the day has nothing to show
   if(tmTask){
     const t=view().find(x=>x.id===tmTask);if(!t){closeDayPop();return false}
-    $("#popTitle").textContent=t.cat+" task";$("#popBody").innerHTML=taskPopHTML(t);return true;
+    $("#popTitle").textContent=popEdit?"Edit task":t.cat+" task";$("#popBody").innerHTML=taskPopHTML(t);
+    const f=popEdit&&$("#popBody .edit");if(f)wireEditForm(f,t,()=>{popEdit=false;closeDayPop()});
+    return true;
   }
   if(!hmSel)return false;
   const now=Date.now(),t0=sod(now).getTime(),html=dayHTML(view(),now,t0);
@@ -1285,21 +1309,32 @@ function drawDayPop(){ // returns false when the day has nothing to show
   $("#popBody").innerHTML=html;
   return true;
 }
+function moveDay(t,day){
+  const now=Date.now(),next=placeOn(t,day,now);
+  closeDayPop();haptic();save(next);
+  toast({t:"Moved to "+fmtDue(next.due),s:t.title,ttl:2500,undo:()=>save({...t})});
+}
 $("#popClose").onclick=closeDayPop;
+$("#pop").addEventListener("change",e=>{
+  if(e.target.id!=="tpDay"||!e.target.value)return;
+  const t=view().find(x=>x.id===tmTask);if(!t)return;
+  const [y,m,d]=e.target.value.split("-").map(Number);moveDay(t,new Date(y,m-1,d).getTime());
+});
 $("#pop").addEventListener("click",e=>{
   if(e.target.id==="pop"){closeDayPop();return}
   const tp=e.target.closest("[data-tp]");
   if(tp){
     const t=view().find(x=>x.id===tmTask);if(!t)return;
-    const act=tp.dataset.tp,now=Date.now(),t0=sod(now).getTime();
-    if(act==="edit"){const id=t.id;closeDayPop();filter=t.cat;openEdit=id;haptic();setView("tasks");
-      setTimeout(()=>document.querySelector(`.row[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({block:"center",behavior:"smooth"}),300);return}
+    const act=tp.dataset.tp,now=Date.now();
+    if(act==="edit"){popEdit=true;haptic();drawDayPop();setTimeout(()=>$("#popBody [name=title]")?.focus(),60);return}
     if(act==="undo"){save({...t,done:false,doneAt:null});haptic();return}
-    if(act==="focus"){const id=t.id;closeDayPop();startFocus(id);return}
+    if(act==="del"){closeDayPop();haptic("warn");remove(t);toast({t:"Deleted",s:t.title,ttl:4000,undo:()=>save(t)});return}
     if(act==="done"){const r=tp.getBoundingClientRect();burst(r.left+r.width/2,r.top+r.height/2,18,[tok(catVar(t.cat)),tok("--accent")],.8);dustBrand();haptic("success");
-      save({...t,done:true,doneAt:now});toast({t:"Dusted ✓",s:t.title,ttl:2500,undo:()=>save({...t})});return}
-    const next=act==="hour"?{...t,due:now+3600e3,reminded:false}:placeOn(t,t0+(act==="week"?7:1)*DAY,now);
-    haptic();save(next);toast({t:"Moved to "+fmtDue(next.due),s:t.title,ttl:2500,undo:()=>save({...t})});return;
+      closeDayPop();const before=dueTodayOpen();save({...t,done:true,doneAt:now});
+      if(before>0&&dueTodayOpen()===0){rain();toast({t:"Today: done & dusted",s:"Everything due today is finished. Put your feet up.",ttl:4500})}
+      else toast({t:"Dusted ✓",s:t.title,ttl:2500,undo:()=>save({...t})});return}
+    if(act.startsWith("d:"))moveDay(t,+act.slice(2));
+    return;
   }
   const tk=e.target.closest("button.tick");if(!tk)return;
   const t=view().find(x=>x.id===tk.dataset.id);if(!t)return;
@@ -1308,16 +1343,20 @@ $("#pop").addEventListener("click",e=>{
   save({...t,done:true,doneAt:Date.now()});
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#pop").hidden)closeDayPop()});
-function taskPopHTML(t){ // pop-up for one task, opened from the task map
+function taskPopHTML(t){ // pop-up for one task, opened from the task map: finish it, move it, change it, delete it
+  if(popEdit)return editFormHTML(t,"p",true);
   const now=Date.now(),t0=sod(now).getTime(),k=taskColours(view(),now,t0)(t),late=!t.done&&t.due&&t.due<now;
   const when=t.done?"Done":t.due?fmtDue(t.due):"No date";
-  return `<div class="rv"><div class="row rag-${k}${t.done?" done":""}" style="--cc:${cc(t.cat)};grid-template-columns:1fr auto"><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="cat">${esc(t.cat)}</span><span class="rag-tag ${k}">${RAGW[k]}</span>${t.pri?'<span class="flag">● Important</span>':""}${t.rep?'<span>↻ Repeats</span>':""}</div></div>
+  const sat=nextSat(t0),on=d=>t.due&&sod(t.due).getTime()===d?" on":"";
+  const wk=new Date(t0).getDay(),wkend=wk===6?t0:wk===0?t0:sat; // on a weekend, "Weekend" means today
+  return `<div class="rv"><div class="row rag-${k}${t.done?" done":""}" style="--cc:${cc(t.cat)};grid-template-columns:1fr auto"><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="cat">${esc(t.cat)}</span>${t.pri?'<span class="flag">● Important</span>':""}${t.rep?`<span>↻ ${esc(repLabel(t.rep))}</span>`:""}</div></div>
       <span class="mono" style="color:${late?"var(--danger)":"var(--muted)"}">${esc(when)}</span></div>
     ${t.note?`<p class="rv-sub" style="overflow-wrap:anywhere;white-space:pre-wrap">${esc(String(t.note))}</p>`:""}
-    <p class="rv-sub">${t.done?"Dusted. Tap Not done to bring it back.":t.due?RAGSUB[k]:"No date yet. Give it a day, or edit it."}</p>
-    <div class="rv-acts">${t.done?`<button class="btn" data-tp="undo">Not done</button>`
-      :`<button class="btn pri" data-tp="done">Done ✓</button>${late||(t.due&&t.due<t0+DAY)?`<button class="btn" data-tp="hour">+1 hour</button>`:""}<button class="btn" data-tp="tomorrow">Tomorrow</button><button class="btn" data-tp="week">Next week</button><button class="btn" data-tp="focus">Focus</button>`}
-      <button class="btn" data-tp="edit">Edit</button></div></div>`;
+    ${t.done?`<p class="rv-sub">Dusted. Tap Not done to bring it back.</p>`:`<div class="when-row" role="group" aria-label="When"><span class="when-k">When?</span>
+      <button class="chip${on(t0)}" data-tp="d:${t0}">Today</button><button class="chip${on(t0+DAY)}" data-tp="d:${t0+DAY}">Tomorrow</button><button class="chip${wkend!==t0&&on(wkend)?" on":""}" data-tp="d:${wkend}">${wkend===t0?"This weekend":"Weekend"}</button>
+      <label class="chip pick">Pick a day<input type="date" id="tpDay" min="${toLocalInput(t0).slice(0,10)}" value="${t.due?toLocalInput(t.due).slice(0,10):""}"></label></div>`}
+    <div class="rv-acts pop-acts">${t.done?`<button class="btn pri" data-tp="undo">Not done</button>`:`<button class="btn pri big" data-tp="done">✓ Done</button>`}
+      <button class="btn" data-tp="edit">Edit</button><button class="btn warn" data-tp="del">Delete</button></div></div>`;
 }
 function dayHTML(list,now,t0){
   if(!hmSel)return "";
@@ -1379,9 +1418,9 @@ document.addEventListener("visibilitychange",()=>{
   came.forEach(t=>{fired.add(t.id+":"+t.due);alarms.set(t.id,now+6000)});
   lsSet("dd.fired",[...fired].slice(-300));
   animIn=true;prevGreet={today:null,over:null};
-  if(currentView==="import")setView("tasks");else render();
+  if(currentView==="import")setView(HOME);else render();
   const mins=Math.round(away/6e4),awayTxt=mins<60?`${mins} min`:`${Math.round(mins/60)} hr`;
-  if(came.length&&pref("alerts")){chime();toast({t:`Welcome back · ${came.length} came due`,s:came.slice(0,3).map(t=>t.title).join(", ")+(came.length>3?"…":""),sticky:true,due:true,actions:[["Show me",()=>{filter="All";setView("tasks");document.querySelector(".row.alarm")?.scrollIntoView({behavior:REDUCED.matches?"auto":"smooth",block:"center"})},"go"]]})}
+  if(came.length&&pref("alerts")){chime();toast({t:`Welcome back · ${came.length} came due`,s:came.slice(0,3).map(t=>t.title).join(", ")+(came.length>3?"…":""),sticky:true,due:true,actions:[["Show me",()=>{tmCat=null;setView(HOME);$(".tm-wrap")?.scrollIntoView({behavior:REDUCED.matches?"auto":"smooth",block:"center"})},"go"]]})}
   else if(!came.length)toast({t:`${partOfDay()}, welcome back`,s:`You were away ${awayTxt}. ${dueTodayOpen()?dueTodayOpen()+" still due today.":"Nothing pressing."}`,ttl:3500});
 });
 
@@ -1556,40 +1595,40 @@ function drawPreview(){
     pending=null;$("#preview").innerHTML="";
     rain();
     toast({t:`Imported ${final.length} tasks`,s:`Across ${new Set(final.map(t=>t.cat)).size} categories`,ttl:4000});
-    filter="All";setView("tasks");
+    tmCat=null;setView(HOME);
   };
 }
 
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&picked){picked=null;render()}});
 /* ---------- boot ---------- */
 initNotifications((action,id)=>{
-  if(action==="brief"){setView("plan");return}
+  if(action==="brief"){setView(HOME);return}
   if(action==="focus"){if(focus&&ovMode==="focus")paintFocus();return}
   const t=view().find(x=>x.id===id);if(!t)return;
   if(action==="done"&&!t.done){save({...t,done:true,doneAt:Date.now()});toast({t:"Dusted ✓",s:t.title,ttl:2500,undo:()=>save({...t})})}
   else if(action==="snooze")save({...t,due:Date.now()+3600e3});
-  else{filter="All";alarms.set(t.id,Date.now()+6000);setView("tasks");setTimeout(()=>document.querySelector(`.row[data-id="${CSS.escape(t.id)}"]`)?.scrollIntoView({block:"center",behavior:"smooth"}),300)}
+  else{alarms.set(t.id,Date.now()+6000);setView(HOME);tmTask=t.id;popEdit=false;hmSel=null;openDayPop()}
 }).then(()=>syncOut());
 initNativeShell({onShown:startSplash,onBack:()=>{
   if(ovMode){closeOv();return true}
   if(!$("#sheet").hidden){closeSheet();return true}
-  if(!$("#pop").hidden){closeDayPop();return true}
+  if(!$("#pop").hidden){if(popEdit){popEdit=false;drawDayPop()}else closeDayPop();return true}
   if(dict.open){closeDict();return true}
   if(picked){picked=null;render();return true}
   if(openEdit){openEdit=null;render();return true}
-  if(currentView==="dash"&&tmCat){tmCat=null;render();return true}
-  if(currentView!=="tasks"){setView("tasks");return true}
+  if(currentView===HOME&&tmCat){tmCat=null;render();return true}
+  if(currentView!==HOME){setView(HOME);return true}
   return false;
 }});
 onResume(()=>{checkDue();syncOut()});
 if(!isNative&&"serviceWorker" in navigator&&import.meta.env.PROD){addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))}
-{const h=location.hash.slice(1);if(["plan","dash","import"].includes(h))setView(h)} // app shortcuts
-initStore();render();
+{const h=location.hash.slice(1);if(h==="import")setView(h)} // app shortcuts
+document.body.dataset.view=currentView;initStore();render();
 setTimeout(checkDue,1500);
 
 /* shared with settings.js */
 async function calAccess(){try{const Cal=await calPlugin();const r=await Cal.requestPermissions({permissions:["calendar"]});if(r.calendar==="granted"){calSync();return true}}catch{}return false}
-function appBridge(){return {getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>syncOut(),calAccess,
+function appBridge(){return {openImport:()=>setView("import"),getTasks:()=>tasks,view,toast,render,exportICS,resync:()=>syncOut(),calAccess,
   getCap:()=>cap,setCap:v=>{cap=v;lsSet("dd.cap",cap)},
   reload:async()=>{tasks=await loadAll();examples=wantExamples();animIn=true;render();syncOut()},
   isExamples:()=>examples,getPersisted:()=>persisted,
