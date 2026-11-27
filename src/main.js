@@ -83,15 +83,15 @@ function startWidget(){
     done:id=>{const t=tasks.find(x=>x.id===id);if(t&&!t.done){save({...t,done:true,doneAt:Date.now()});toast({t:"Dusted from your widget ✓",s:t.title,ttl:2500,undo:()=>save({...t})})}},
     share:text=>{
       const clean=String(text).replace(/\s+/g," ").trim().slice(0,240);
-      closeOv();setView(HOME);q.value=clean;q.dispatchEvent(new Event("input"));
-      setTimeout(()=>{q.focus();q.setSelectionRange(clean.length,clean.length)},250);
+      closeOv();setView(HOME);q.value=clean;q.dispatchEvent(new Event("input"));openAdd();
+      setTimeout(()=>{q.setSelectionRange(clean.length,clean.length)},250);
       toast({t:"Shared in",s:"Add a date or #category if you like, then tap Add.",ttl:3500});
     },
     import:code=>{setView(HOME);receiveList(code)},
     shortcut:k=>{
       closeOv();
-      if(k==="add"){setView(HOME);setTimeout(()=>q.focus(),250)}
-      else if(k==="dictate"){setView(HOME);setTimeout(()=>micBtn.click(),400)}
+      if(k==="add"){setView(HOME);openAdd()}
+      else if(k==="dictate"){setView(HOME);openAdd(false);setTimeout(()=>micBtn.click(),400)}
       else {tmCat=null;setView(HOME)}
     }});
   pushWidget(widgetData);
@@ -157,7 +157,7 @@ async function saveMany(list,progress){
 /* ---------- state ---------- */
 let filter="All",openEdit=null,currentView="dash";
 const HOME="dash"; // the Task map is the home screen
-let tmDone=false,popEdit=false; // show finished tasks on the map; task pop-up in edit mode
+let tmDone=false,popEdit=false,tmDay=null; // tmDay: the week-view tile opened, as a bucket key // show finished tasks on the map; task pop-up in edit mode
 let animIn=true,lastAdded=null,prevGreet={today:null,over:null},D=0,doneOpen=false;
 const dueTodayOpen=()=>{const e=sod(Date.now()).getTime()+DAY;return view().filter(t=>!t.done&&t.due&&t.due<e).length};
 const alarms=new Map(); // id -> until timestamp
@@ -229,7 +229,7 @@ $("#addForm").addEventListener("submit",e=>{
   save({id:nid,title:titleCase(p.title),cat:p.cat,due:p.due,pri:p.pri,rep:p.rep||null,who:p.who||null,effort:p.effort||null,mins:p.mins||null,done:false,doneAt:null,createdAt:Date.now(),src:"manual"});
   q.value="";q.dispatchEvent(new Event("input"));
   toast({t:"Added",s:`${titleCase(p.title)}${p.due?" · "+fmtDue(p.due):""}${p.rep?" · repeats "+repLabel(p.rep).toLowerCase():""}`,ttl:2500});
-  if(currentView!=="tasks")setView(HOME);
+  afterAdd();
 });
 
 /* ---------- keep the phone's reminders and the home-screen widget in step ---------- */
@@ -486,13 +486,13 @@ function startHTML(){
 function wireStart(el){
   const go=(v,fn)=>()=>{setPref("start",v);haptic();animIn=true;fn()};
   el.querySelector("#stKeep").onclick=go("import",()=>{examples=wantExamples();setView("import")});
-  el.querySelector("#stFresh").onclick=go("fresh",()=>{examples=false;render();q.focus()});
+  el.querySelector("#stFresh").onclick=go("fresh",()=>{examples=false;render();openAdd()});
   el.querySelector("#stEx").onclick=go("examples",()=>{examples=true;render()});
 }
 function steps(){
   const real=tasks;
   return [
-    ["add","Add your first task",real.length>0,"Type it in the box above, or import from Keep."],
+    ["add","Add your first task",real.length>0,"Tap + on the Task map, or import from Keep in Settings."],
     ["time","Give a task a time",real.some(t=>t.due),"Add “tomorrow 6pm” to a task. You'll get a reminder."],
     ...(canDictate?[["voice","Say a task out loud",real.some(t=>t.src==="voice"),"Tap the mic and speak. Say several at once."]]:[]),
     ["done","Finish one",real.some(t=>t.done),"Tap a task on the map, then Done."],
@@ -513,14 +513,14 @@ function dataNoteDue(){return !examples&&tasks.length>=5&&!pref("backedUp")&&!pr
 function dataNoteHTML(){return `<div class="note" style="--d:0"><span>Your tasks live only ${WHERE}. No account, no cloud. A backup keeps them safe.</span><span class="note-acts"><button id="dnBackup">Save a backup</button><button id="dnOk">Later</button></span></div>`}
 function wireOnboard(el){
   const b=id=>el.querySelector("#"+id);
-  if(b("goFresh"))b("goFresh").onclick=()=>{setPref("start","fresh");examples=false;animIn=true;render();q.focus()};
+  if(b("goFresh"))b("goFresh").onclick=()=>{setPref("start","fresh");examples=false;animIn=true;render();openAdd()};
   if(b("gdHide"))b("gdHide").onclick=()=>{setPref("gdHidden",true);render()};
   if(b("dnOk"))b("dnOk").onclick=()=>{setPref("dataNoteOk",true);render()};
   if(b("dnBackup"))b("dnBackup").onclick=()=>doBackup();
   el.querySelectorAll("[data-gd]").forEach(x=>x.onclick=()=>{
     const k=x.dataset.gd;haptic();
-    if(k==="add"||k==="time"){q.focus();if(k==="time"&&!q.value){q.value="Call the plumber tomorrow 6pm";q.dispatchEvent(new Event("input"));q.select()}}
-    else if(k==="voice")micBtn.click();
+    if(k==="add"||k==="time"){openAdd();if(k==="time"&&!q.value){q.value="Call the plumber tomorrow 6pm";q.dispatchEvent(new Event("input"));q.select()}}
+    else if(k==="voice"){openAdd(false);setTimeout(()=>micBtn.click(),300)}
     else if(k==="plan")autoPlan();
     else if(k==="backup")doBackup();
     else if(k==="done")el.querySelector(".task-tile:not(.done)")?.focus();
@@ -530,7 +530,20 @@ function wireOnboard(el){
 /* ---------- dictation: speak several tasks, review, add ---------- */
 const dict={open:false,listening:false,text:"",items:[],session:null,note:""};
 const micBtn=$("#mic"),dictEl=$("#dict");
-$("#hdrAdd").onclick=()=>{haptic();setView(HOME);q.focus()};
+$("#hdrAdd").onclick=()=>{haptic();setView(HOME);openAdd()};
+/* ---------- pop-up sheets: add a task, and the list ---------- */
+let listOpen=false;
+function showSheet(id){const s=$(id);s.hidden=false;requestAnimationFrame(()=>s.classList.add("open"))}
+function hideSheet(id){const s=$(id);if(s.hidden)return;s.classList.remove("open");setTimeout(()=>{s.hidden=true},250)}
+function openAdd(focus=true){haptic();showSheet("#addSheet");if(focus)setTimeout(()=>q.focus(),60)}
+function closeAdd(){closeDict();hideSheet("#addSheet");q.blur()}
+function afterAdd(){closeAdd();if(currentView==="import")setView(HOME)}
+function openList(cat){filter=cat||"All";listOpen=true;animIn=true;showSheet("#listSheet");render()}
+function closeList(){listOpen=false;openEdit=null;hideSheet("#listSheet")}
+$("#addClose").onclick=closeAdd;$("#listClose").onclick=closeList;
+$("#addSheet").addEventListener("click",e=>{if(e.target.id==="addSheet")closeAdd()});
+$("#listSheet").addEventListener("click",e=>{if(e.target.id==="listSheet")closeList()});
+document.addEventListener("keydown",e=>{if(e.key!=="Escape"||!$("#pop").hidden)return;if(!$("#addSheet").hidden)closeAdd();else if(listOpen)closeList()});
 $("#backHome").onclick=()=>{haptic();setView(HOME)};
 wireInfo($("#v-dash"),()=>render());
 let canDictate=false;
@@ -605,7 +618,7 @@ function drawDict(liveOnly){
     lastAdded=list[list.length-1].id;
     closeDict();saveMany(list);
     toast({t:`Added ${list.length} task${list.length>1?"s":""}`,s:list.slice(0,3).map(t=>t.title).join(", ")+(list.length>3?"…":""),ttl:3500});
-    if(currentView!=="tasks")setView(HOME);
+    afterAdd();
   };
 }
 function drawDictAfterDrop(){ // a card was removed by hand: keep the remaining cards as they are
@@ -617,7 +630,7 @@ function drawDictAfterDrop(){ // a card was removed by hand: keep the remaining 
 /* ---------- views ---------- */
 function setView(v){
   const changed=currentView!==v;currentView=v;
-  $("#v-tasks").hidden=v!=="tasks";$("#v-plan").hidden=v!=="plan";$("#v-dash").hidden=v!=="dash";$("#v-import").hidden=v!=="import";
+  $("#v-plan").hidden=v!=="plan";$("#v-dash").hidden=v!=="dash";$("#v-import").hidden=v!=="import";
   if(v==="dash"&&!pref("sawDash"))setPref("sawDash",true);
   if(v==="plan"&&changed)setPref("planSeen",(pref("planSeen")||0)+1);
   document.body.dataset.view=v;
@@ -639,7 +652,7 @@ function render(){
     if(prevGreet.over!==null&&prevGreet.over!==over)$("#g-over")?.classList.add("bump");
     prevGreet={today,over};
   }
-  if(currentView==="tasks") renderTasks(list,now,t0);
+  if(listOpen) renderTasks(list,now,t0);
   if(currentView==="dash") renderDash(list,now,t0);
   if(currentView==="plan") renderPlan(list,now,t0);
   if(!$("#pop").hidden&&!popEdit)drawDayPop(); // keep an open day pop-up in step with changes
@@ -653,6 +666,7 @@ function renderTasks(list,now,t0){
   if(!loaded){el.innerHTML='<div class="empty">Loading your tasks…</div>';return}
   const m=cats(list),names=Object.keys(m).sort((a,b)=>(m[b].open-m[a].open)||a.localeCompare(b));
   if(filter!=="All"&&!m[filter])filter="All";
+  $("#listTitle").textContent=filter==="All"?"All tasks":filter+" tasks";
   const f=list.filter(t=>filter==="All"||t.cat===filter);
   const open=f.filter(t=>!t.done),done=f.filter(t=>t.done).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0));
   const by=k=>(a,b)=>(a.due??Infinity)-(b.due??Infinity)||b.pri-a.pri;
@@ -865,7 +879,12 @@ function renderDash(list,now,t0){
     <div class="tile" style="--d:3"><div class="k">Done · 7 days</div><div class="v" data-n="${weekDone}">${weekDone}</div><div class="s">${streak} day streak${streak>=3?" 🔥":""}</div></div>
   </div>`;
   if(tmCat&&!list.some(t=>t.cat===tmCat))tmCat=null;
-  P.map=`<div class="panel home-map" style="--d:0"><div class="map-head"><h4>Task map ${infoBtn("map")}</h4>${open.length?`<button class="btn auto" id="autoBtn"><span class="spark">✦</span> Plan my week</button>`:""}</div>${taskTreemapHTML(list,now,t0,tmCat)}</div>`;
+  const mode=pref("mapMode")||"week";
+  P.map=`<div class="panel home-map" style="--d:0"><div class="map-head"><h4>Task map ${infoBtn("map")}</h4>
+      <div class="map-ctl"><div class="mode-seg" role="group" aria-label="Map view"><button data-mmode="day" aria-pressed="${mode==="day"}">Day</button><button data-mmode="week" aria-pressed="${mode==="week"}">Week</button></div>
+      <button class="map-add" id="mapAdd" aria-label="Add a task"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
+    ${mapHTML(list,now,t0,mode)}
+    ${open.length?`<button class="btn auto plan-btn" id="autoBtn"><span class="spark">✦</span> Plan my week</button>`:""}</div>`;
   P.heat=`<div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day ${infoBtn("heat")}</small></h4>${heatmapHTML(list,now,t0)}</div>`;
   P.ring=`<div class="panel ring" style="--d:4"><svg viewBox="0 0 150 150" role="img" aria-label="Today ${Math.round(pct*100)} percent complete">
       <circle cx="75" cy="75" r="${R}" fill="none" stroke="var(--sunk)" stroke-width="14"/>
@@ -901,8 +920,10 @@ function renderDash(list,now,t0){
   const dr=$("#dashReset");if(dr)dr.onclick=()=>{setPref("dashHidden",[]);haptic();render()};
   const tw=el.querySelector(".tm-wrap");
   if(tw)tw.addEventListener("click",e=>{
-    const go=e.target.closest("[data-tmgo]"),tk=e.target.closest("[data-tid]"),b=e.target.closest("[data-tcat]"),sd=e.target.closest("[data-tmdone]");
-    if(go){filter=tmCat||"All";haptic();setView("tasks");return}
+    const go=e.target.closest("[data-tmgo]"),tk=e.target.closest("[data-tid]"),b=e.target.closest("[data-tcat]"),sd=e.target.closest("[data-tmdone]"),dy=e.target.closest("[data-tday]"),up=e.target.closest("[data-tmup]");
+    if(go){openList(tmCat);return}
+    if(dy){tmDay=dy.dataset.tday;animIn=true;haptic();render();return}
+    if(up){tmDay=null;animIn=true;haptic();render();return}
     if(sd){tmDone=!tmDone;haptic();render();return}
     if(tk){tmTask=tk.dataset.tid;popEdit=false;hmSel=null;haptic();openDayPop();return} // same pop-up as a heatmap day
     if(b){const c=b.dataset.tcat||null;tmCat=tmCat===c?null:c;animIn=true;haptic();render()}
@@ -936,6 +957,8 @@ function renderDash(list,now,t0){
     if(it&&+it.dataset.rvi!==hmReview.idx){hmReview.idx=+it.dataset.rvi;redrawReview(true)}
   });
   const ab=el.querySelector("#autoBtn");if(ab)ab.onclick=()=>{haptic();autoPlan()};
+  const ma=el.querySelector("#mapAdd");if(ma)ma.onclick=()=>openAdd();
+  el.querySelectorAll("[data-mmode]").forEach(b=>b.onclick=()=>{setPref("mapMode",b.dataset.mmode);tmDay=null;animIn=true;haptic();render()});
   wireHomeNotes(el);
   wireRemindersPanel();
 }
@@ -963,7 +986,7 @@ function postponeNudge(t){
   const cur=tasks.find(x=>x.id===t.id);if(!cur||cur.done)return;
   haptic("warn");
   toast({t:`Moved ${cur.moves} times`,s:`“${cur.title}” keeps slipping. Break it into a first small step, or let it go?`,sticky:true,actions:[
-    ["Break it down",()=>{setView(HOME);q.value=`First step: ${cur.title} today #${cur.cat}`;q.dispatchEvent(new Event("input"));q.focus();q.setSelectionRange(12,12+cur.title.length)},"go"],
+    ["Break it down",()=>{setView(HOME);q.value=`First step: ${cur.title} today #${cur.cat}`;q.dispatchEvent(new Event("input"));openAdd();q.setSelectionRange(12,12+cur.title.length)},"go"],
     ["Drop it",()=>{remove(cur);toast({t:"Dropped",s:cur.title,ttl:4000,undo:()=>save(cur)})}]]});
 }
 function placeOn(t,dayStart,now,slot=0){ // keep the task's time of day; if that's already past today, use the next free hour
@@ -1151,17 +1174,79 @@ function treemapHTML(list,now,t0){
     <div class="hm-legend"><span><i style="background:var(--danger)"></i>Red · overdue</span><span><i style="background:var(--amber)"></i>Amber · due today or at risk</span><span><i style="background:var(--ok)"></i>Green · on track or done</span></div>
     ${infoText("map","Bigger tiles have more tasks. Each tile is split into red, amber and green by its tasks. Tap a category to map its tasks.")}</div>`;
 }
+/* Which tile of the week view a task sits in: "late" (open, due before today), a day start (ms), "later" or "none" */
+function dayKey(t,t0){
+  if(!t.due)return "none";
+  if(!t.done&&t.due<t0)return "late";
+  const d=sod(t.due).getTime();
+  return d<t0?"past":d>=t0+7*DAY?"later":String(d);
+}
+function dayName(k,t0){
+  if(k==="late")return "Late";if(k==="none")return "No date";if(k==="later")return "Later";
+  const d=+k;return d===t0?"Today":d===t0+DAY?"Tomorrow":new Date(d).toLocaleDateString("en-IN",{weekday:"short",day:"numeric"});
+}
+/* The Task map. Week: a tile per day (plus Late and No date), tap one to see its tasks. Day: today's and late tasks. */
+function mapHTML(list,now,t0,mode){
+  if(mode==="day"){
+    const pick=t=>t.due&&t.due<t0+DAY&&(!t.done||(t.doneAt||0)>=t0);
+    const rest=list.filter(t=>!t.done&&(!t.cat||!tmCat||t.cat===tmCat)&&!(t.due&&t.due<t0+DAY)).length;
+    const head=`<p class="tm-crumb day-crumb"><b>Today</b>${rest?` · ${rest} more later or without a date`:""}</p>`;
+    return taskTreemapHTML(list,now,t0,tmCat,pick,head,"Nothing due today. Enjoy the free day, or tap Week to look ahead.");
+  }
+  if(tmDay){
+    const k=tmDay,pick=t=>dayKey(t,t0)===k;
+    if(!list.some(t=>pick(t)&&(!tmCat||t.cat===tmCat)))tmDay=null;
+    else{
+      const head=`<div class="tm-head"><button class="btn tm-up" data-tmup aria-label="Back to the week">‹ Week</button><span class="tm-crumb"><b>${esc(dayName(k,t0))}</b>${k!=="late"&&k!=="none"&&k!=="later"?" · "+new Date(+k).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):""}</span></div>`;
+      return taskTreemapHTML(list,now,t0,tmCat,pick,head,"Nothing left here.");
+    }
+  }
+  return weekMapHTML(list,now,t0);
+}
+function weekMapHTML(list,now,t0){
+  const cat=tmCat,inCat=list.filter(t=>!cat||t.cat===cat),colour=taskColours(list,now,t0);
+  const shown=inCat.filter(t=>tmDone||!t.done),doneN=inCat.filter(t=>t.done&&dayKey(t,t0)!=="past").length;
+  const m=cats(list),names=Object.keys(m).filter(c=>m[c].open||tmDone||c===cat).sort((x,y)=>(m[y].open-m[x].open)||x.localeCompare(y));
+  const chips=names.length>1||cat?`<div class="chips tm-chips" role="group" aria-label="Show a category"><button class="chip" data-tcat="" aria-pressed="${!cat}">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
+    names.map(c=>`<button class="chip" data-tcat="${esc(c)}" aria-pressed="${cat===c}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`:"";
+  const foot=`<div class="tm-foot">${doneN?`<button class="linkbtn" data-tmdone aria-pressed="${tmDone}">${tmDone?"Hide done":`Show done (${doneN})`}</button>`:"<span></span>"}<button class="linkbtn" data-tmgo>See as a list</button></div>`;
+  const keys=["late",...[...Array(7)].map((_,i)=>String(t0+i*DAY)),"later","none"];
+  const by={};shown.forEach(t=>{const k=dayKey(t,t0);(by[k]=by[k]||[]).push(t)});
+  const items=keys.filter(k=>by[k]||(k!=="late"&&k!=="later"&&k!=="none")).map(k=>{
+    const arr=by[k]||[],n={r:0,a:0,g:0};arr.forEach(t=>n[colour(t)]++);
+    const open=arr.filter(t=>!t.done).length;
+    return {v:arr.length,k,name:dayName(k,t0),sub:arr.length?(open?`${open} to do`:"All done"):"Free",
+      bands:["r","a","g"].map(x=>({k:x,n:n[x]})),empty:!arr.length};
+  });
+  if(!shown.length&&!list.length)return `<div class="tm-wrap"><div class="tm-empty"><b>Nothing here yet</b><span>Tap + to add your first task.</span></div></div>`;
+  // days with more tasks get bigger tiles; free days stay small but tappable
+  const floor=.045,tot=Math.max(1,items.reduce((s,it)=>s+it.v,0));
+  items.forEach(it=>{it.v=Math.max(Math.sqrt(it.v),floor*Math.sqrt(tot)*2,.35)});
+  const px=300,W=1000,H=Math.round(W*px/340);
+  const tiles=squarify(items,W,H).map((b,i)=>{
+    const wpx=b.w/W*340,hpx=b.h/H*px,small=wpx<90||hpx<60,tiny=wpx<46||hpx<30;
+    const style=`left:${(b.x/W*100).toFixed(2)}%;top:${(b.y/H*100).toFixed(2)}%;width:${(b.w/W*100).toFixed(2)}%;height:${(b.h/H*100).toFixed(2)}%;--i:${Math.min(i,20)}`;
+    const label=`${b.name}: ${b.sub}`,inner=tiny?"":`<span class="nm">${esc(b.name)}</span>${small&&b.empty?"":`<span class="sb">${esc(b.sub)}</span>`}`;
+    if(b.empty)return `<div class="tmap-tile day-free${small?" small":""}" style="${style}" role="img" aria-label="${esc(label)}" title="${esc(label)}"><span class="tlab">${inner}</span></div>`;
+    const bands=b.bands.filter(x=>x.n).map(x=>`<i class="${x.k}" style="flex-grow:${x.n}"></i>`).join("");
+    return `<button class="tmap-tile bands-tile${small?" small":""}" style="${style}" data-tday="${b.k}" aria-label="${esc(label)}" title="${esc(label)}"><span class="bands">${bands}</span><span class="tlab">${inner}</span></button>`;
+  }).join("");
+  return `<div class="tm-wrap">${chips}<div class="tmap" role="group" aria-label="Your week" style="height:${px}px">${tiles}</div>
+    <div class="hm-legend"><span><i style="background:var(--danger)"></i>Late</span><span><i style="background:var(--amber)"></i>Due today or busy</span><span><i style="background:var(--ok)"></i>On track</span></div>
+    ${foot}
+    ${infoText("map","Each tile is a day. Bigger tiles have more tasks, and the colours show how they're going. Tap a day to see its tasks.")}</div>`;
+}
 /* Task map: one tile per task, for every category or the one picked in the chips above it.
    Colour = the task's RAG (done tasks green and struck through, shown only on "Show done").
    Size = how much it needs you: overdue 3, due today or at risk 2, on track 1.5, done 1; Important adds 1. */
-function taskTreemapHTML(list,now,t0,cat){
-  const inCat=list.filter(t=>!cat||t.cat===cat),colour=taskColours(list,now,t0),RANK={r:0,a:1,g:2};
+function taskTreemapHTML(list,now,t0,cat,pick=()=>true,head="",emptyMsg=""){
+  const inCat=list.filter(t=>(!cat||t.cat===cat)&&pick(t)),colour=taskColours(list,now,t0),RANK={r:0,a:1,g:2};
   const doneN=inCat.filter(t=>t.done).length,arr=tmDone?inCat:inCat.filter(t=>!t.done);
   const m=cats(list),names=Object.keys(m).filter(c=>m[c].open||tmDone||c===cat).sort((x,y)=>(m[y].open-m[x].open)||x.localeCompare(y));
   const chips=names.length>1||cat?`<div class="chips tm-chips" role="group" aria-label="Show a category"><button class="chip" data-tcat="" aria-pressed="${!cat}">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
     names.map(c=>`<button class="chip" data-tcat="${esc(c)}" aria-pressed="${cat===c}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`:"";
   const foot=`<div class="tm-foot">${doneN?`<button class="linkbtn" data-tmdone aria-pressed="${tmDone}">${tmDone?"Hide done":`Show done (${doneN})`}</button>`:"<span></span>"}<button class="linkbtn" data-tmgo>See as a list</button></div>`;
-  if(!arr.length)return `<div class="tm-wrap">${chips}<div class="tm-empty"><b>${list.length?"All done &amp; dusted ✨":"Nothing here yet"}</b><span>${list.length?"Nothing open"+(cat?" in "+esc(cat):"")+". Add a task above.":"Type or say a task above to get started."}</span></div>${list.length?foot:""}</div>`;
+  if(!arr.length)return `<div class="tm-wrap">${chips}${head}<div class="tm-empty"><b>${list.length?"All done &amp; dusted ✨":"Nothing here yet"}</b><span>${list.length?(emptyMsg||"Nothing open"+(cat?" in "+esc(cat):"")+"."):"Tap + to add your first task."}</span></div>${list.length?foot:""}</div>`;
   const n={r:0,a:0,g:0};
   let items=arr.map(t=>{
     const k=colour(t);n[k]++;
@@ -1180,7 +1265,7 @@ function taskTreemapHTML(list,now,t0,cat){
     const inner=tiny?"":`<span class="nm">${b.pri&&!b.done?"● ":""}${esc(b.name)}</span>${small?"":`<span class="sb">${esc(b.sub)}</span>`}`;
     return `<button class="tmap-tile task-tile ${b.k}${b.done?" done":""}${small?" small":""}" style="${style}" data-tid="${esc(b.id)}" aria-label="${esc(label)}" title="${esc(label)}">${inner}</button>`;
   }).join("");
-  return `<div class="tm-wrap">${chips}
+  return `<div class="tm-wrap">${chips}${head}
     <div class="tmap" role="group" aria-label="${cat?esc(cat)+" tasks":"Your tasks"}" style="height:${px}px">${tiles}</div>
     <div class="hm-legend"><span><i style="background:var(--danger)"></i>Late ${n.r}</span><span><i style="background:var(--amber)"></i>Today ${n.a}</span><span><i style="background:var(--ok)"></i>On track ${n.g}</span></div>
     ${foot}
@@ -1613,9 +1698,13 @@ initNativeShell({onShown:startSplash,onBack:()=>{
   if(ovMode){closeOv();return true}
   if(!$("#sheet").hidden){closeSheet();return true}
   if(!$("#pop").hidden){if(popEdit){popEdit=false;drawDayPop()}else closeDayPop();return true}
+  if(!$("#addSheet").hidden){closeAdd();return true}
+  if(openEdit){openEdit=null;render();return true}
+  if(listOpen){closeList();return true}
   if(dict.open){closeDict();return true}
   if(picked){picked=null;render();return true}
   if(openEdit){openEdit=null;render();return true}
+  if(currentView===HOME&&tmDay){tmDay=null;render();return true}
   if(currentView===HOME&&tmCat){tmCat=null;render();return true}
   if(currentView!==HOME){setView(HOME);return true}
   return false;
