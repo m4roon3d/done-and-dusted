@@ -152,18 +152,9 @@ if(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()){d
     </div>
   </header>
 
-  <form class="add" id="addForm" autocomplete="off">
-    <input id="quick" placeholder="Pay electricity bill tomorrow 6pm #Home !" aria-label="Add a task">
-    <button type="button" class="mic" id="mic" aria-label="Dictate tasks" title="Dictate tasks" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
-    <button type="submit">Add</button>
-  </form>
-  <div class="dict" id="dict" hidden aria-live="polite"></div>
-  <div class="parse" id="parse"></div>
-
   <div class="subbar" id="subbar"><button class="btn sm" id="backHome" aria-label="Back to the Task map">‹ Back</button><b id="subTitle"></b></div>
 
   <main>
-    <section id="v-tasks" hidden></section>
     <section id="v-plan" hidden></section>
     <section id="v-dash"></section>
     <section id="v-import" hidden>
@@ -194,6 +185,27 @@ if(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()){d
     <div class="grab" aria-hidden="true"></div>
     <div class="sheet-head"><h2 id="sheetTitle">Settings</h2><button class="btn sm" id="sheetClose">Close</button></div>
     <div id="sheetBody"></div>
+  </div>
+</div>
+<div class="sheet" id="listSheet" hidden role="dialog" aria-modal="true" aria-labelledby="listTitle">
+  <div class="sheet-card list-card">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="listTitle">All tasks</h2><button class="btn sm" id="listClose">Close</button></div>
+    <section id="v-tasks"></section>
+  </div>
+</div>
+<div class="sheet" id="addSheet" hidden role="dialog" aria-modal="true" aria-labelledby="addTitle">
+  <div class="sheet-card add-card">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="addTitle">Add a task</h2><button class="btn sm" id="addClose">Close</button></div>
+  <form class="add" id="addForm" autocomplete="off">
+    <input id="quick" placeholder="Pay electricity bill tomorrow 6pm #Home !" aria-label="Add a task">
+    <button type="button" class="mic" id="mic" aria-label="Dictate tasks" title="Dictate tasks" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+    <button type="submit">Add</button>
+  </form>
+  <div class="dict" id="dict" hidden aria-live="polite"></div>
+  <div class="parse" id="parse"></div>
+
   </div>
 </div>
 <div class="sheet" id="pop" hidden role="dialog" aria-modal="true" aria-labelledby="popTitle">

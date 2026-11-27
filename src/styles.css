@@ -908,3 +908,24 @@ body:not([data-view="dash"]) .subbar{display:flex}
 .sh-list .tag{font-size:.68rem;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--sunk);color:var(--muted)}
 .sh-list .tag.new{background:color-mix(in srgb,var(--ok) 20%,transparent);color:var(--ink)}
 .sh-list .tag.done{background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--ink)}
+
+/* ---------- map views, add and list pop-ups ---------- */
+.map-ctl{display:flex;align-items:center;gap:8px}
+.mode-seg{display:flex;background:var(--sunk);border-radius:99px;padding:3px}
+.mode-seg button{border:0;background:none;border-radius:99px;padding:7px 14px;font:inherit;font-weight:700;font-size:.9rem;color:var(--muted);cursor:pointer}
+.mode-seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.map-add{width:42px;height:42px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;cursor:pointer;box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 45%,transparent);transition:transform .15s}
+.map-add:active{transform:scale(.92)}
+.map-add svg{width:22px;height:22px}
+.plan-btn{width:100%;justify-content:center;min-height:46px;margin-top:12px;font-size:1rem}
+.tmap-tile.day-free{background:var(--sunk);color:var(--muted);border:1.5px dashed var(--line);box-shadow:none}
+.day-crumb{margin:0 0 10px;color:var(--muted)}
+.day-crumb b{color:var(--ink)}
+.home-map .tm-head{margin-bottom:10px}
+.add-card .add{margin:6px 0 4px}
+.add-card .parse{margin-top:8px}
+.add-card .dict{margin-top:10px}
+.list-card{max-height:92vh}
+.list-card #v-tasks{padding-bottom:12px}
+@media (max-width:420px){.map-head{flex-wrap:wrap}.mode-seg button{padding:7px 11px}}
+.tmap-tile.day-free .tlab{display:flex;flex-direction:column;gap:2px;margin:6px;min-width:0}.day-free .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
