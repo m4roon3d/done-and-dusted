@@ -808,8 +808,32 @@ html.look-fade,html.look-fade *{transition:background-color .35s ease,color .35s
 .parse:empty{display:none}
 .hdr-r{display:flex;gap:8px;align-items:center}
 .hdr-add{display:none}
-body:not([data-view="tasks"]) .hdr-add{display:grid}
-body:not([data-view="tasks"]) :is(#addForm,#dict,#parse){display:none!important}
+body:is([data-view="import"],[data-view="plan"]) :is(#addForm,#dict,#parse){display:none!important}
+
+/* ---------- one screen: the Task map is home ---------- */
+.switch{display:none}
+.subbar{display:none;align-items:center;gap:10px;margin:12px 0 0}
+.subbar b{font-family:var(--f-display);font-size:1.15rem}
+body:not([data-view="dash"]) .subbar{display:flex}
+@media (max-width:620px){main{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}.toasts{bottom:env(safe-area-inset-bottom,0px)}}
+.map-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.map-head h4{margin:0}
+.home-map .tm-chips{margin:0 0 10px;padding:0}
+.tm-foot{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.tm-foot .linkbtn{font-size:.9rem}
+.tm-empty{display:grid;gap:4px;place-items:center;text-align:center;padding:34px 12px;border:1.5px dashed var(--line);border-radius:var(--r);color:var(--muted)}
+.tm-empty b{font-family:var(--f-display);font-size:1.2rem;color:var(--ink)}
+.home-map .tmap-tile .nm{font-size:1.02rem}
+.dash-bar{margin-top:18px;justify-content:center}
+.when-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 4px}
+.when-k{font-weight:700;margin-right:2px}
+.when-row .chip{min-height:42px;padding:0 14px;font-size:.95rem}
+.when-row .chip.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.when-row .pick{position:relative;cursor:pointer}
+.when-row .pick input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
+.pop-acts{margin-top:14px;display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px}
+.pop-acts .btn{min-height:48px;font-size:1rem;justify-content:center}
+#popBody .edit{margin:0;padding:0;border:0}
 
 /* ---------- overlay: dust-off and focus ---------- */
 .ov{position:fixed;inset:0;z-index:45;background:color-mix(in srgb,var(--ink) 0%,transparent);display:flex;align-items:stretch;justify-content:center;transition:background .25s}
