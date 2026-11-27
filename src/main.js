@@ -19,7 +19,7 @@ applyLook(); // before anything draws
 import JSZip from "jszip";
 import { esc, uid, DAY, sod, KNOWN, guessCat, titleCase, catVar, cc, parseWhen, parseQuick, fmtDue, toLocalInput, sampleTasks, parseDictation, collapseRepeats, briefText, REPEATS, repLabel, nextDue } from "./core.js";
 import { dictationSupported, startDictation } from "./speech.js";
-import { infoBtn, infoText, wireInfo } from "./info.js";
+import { infoBtn, infoText, wireInfo, hint } from "./info.js";
 import { initWidget, pushWidget } from "./widget.js";
 import { holidayOn } from "./holidays.js";
 import { encodeList, decodeList, linkFor, appLink, qrSVG, planImport } from "./share.js";
@@ -209,7 +209,7 @@ function partOfDay(){const h=new Date().getHours();return h<5?"Working late":h<1
 /* ---------- quick add ---------- */
 // the typing tip retires once you've got a few tasks in
 function fmtMins(m){return m>=60?(m%60?`${Math.floor(m/60)}h ${m%60}m`:`${m/60}h`):`${m} min`}
-function parseHint(){return tasks.length<5?'<span>Try <b>#Home</b>, <b>fri 5pm</b>, <b>!</b> for important, <b>every monday</b>.</span>':""}
+function parseHint(){return ""}
 const q=$("#quick");
 let catPick=null; // a category tapped in the Add pop-up; it wins over what the words suggest
 /* parseQuick, plus: a category you already use, said as "…in Home", "…for Finance", "…to my Work list", counts like #Home */
@@ -533,7 +533,7 @@ function getDustedHTML(){
   const next=st.find(x=>!x[2])[0];
   return `<div class="panel gd" style="--d:0"><div class="gd-head"><h4>Get dusted <small>${n} of ${st.length}</small></h4><button class="gd-x" id="gdHide" aria-label="Hide this checklist">Hide</button></div>
     <div class="gd-bar" aria-hidden="true"><i style="width:${Math.round(n/st.length*100)}%"></i></div>
-    <ul class="gd-list">${st.map(([k,t,ok,sub])=>`<li class="${ok?"ok":""}${k===next?" next":""}"><button data-gd="${k}"${ok?" disabled":""}><span class="gd-tick" aria-hidden="true">${ok?"✓":""}</span><span><b>${t}</b>${k===next?`<small>${sub}</small>`:""}</span></button></li>`).join("")}</ul></div>`;
+    <ul class="gd-list">${st.map(([k,t,ok,sub])=>`<li class="${ok?"ok":""}${k===next?" next":""}"><button data-gd="${k}"${ok?" disabled":""}><span class="gd-tick" aria-hidden="true">${ok?"✓":""}</span><span><b>${t}</b></span></button></li>`).join("")}</ul></div>`;
 }
 function wireOnboard(el){
   const b=id=>el.querySelector("#"+id);
@@ -569,6 +569,7 @@ $("#listSheet").addEventListener("click",e=>{if(e.target.id==="listSheet")closeL
 document.addEventListener("keydown",e=>{if(e.key!=="Escape"||!$("#pop").hidden)return;if(!$("#addSheet").hidden)closeAdd();else if(listOpen)closeList()});
 $("#backHome").onclick=()=>{haptic();setView(HOME)};
 wireInfo($("#v-dash"),()=>render());
+infoText("add","Type or say it naturally. <b>#Home</b> picks a category, <b>fri 5pm</b> sets a time, <b>!</b> marks it important, <b>every monday</b> repeats it. Or tap a category below.");
 let canDictate=false;
 dictationSupported().then(ok=>{micBtn.hidden=!ok;canDictate=ok;if(currentView!=="import")render()});
 micBtn.onclick=()=>{dict.listening?stopListening():startListening()};
@@ -697,7 +698,7 @@ function renderTasks(list,now,t0){
   if(!loaded){el.innerHTML='<div class="empty">Loading your tasks…</div>';return}
   const m=cats(list),names=Object.keys(m).sort((a,b)=>(m[b].open-m[a].open)||a.localeCompare(b));
   if(filter!=="All"&&!m[filter])filter="All";
-  $("#listTitle").textContent=filter==="All"?"All tasks":filter+" tasks";
+  $("#listTitle").innerHTML=esc(filter==="All"?"All tasks":filter+" tasks")+infoBtn("list","Tap a task's circle to finish it, or tap the task to change it. On a phone, swipe right to finish, left to move it to tomorrow.");
   const f=list.filter(t=>filter==="All"||t.cat===filter);
   const open=f.filter(t=>!t.done),done=f.filter(t=>t.done).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0));
   const by=k=>(a,b)=>(a.due??Infinity)-(b.due??Infinity)||b.pri-a.pri;
@@ -712,15 +713,13 @@ function renderTasks(list,now,t0){
   h+=`<div class="chips" role="group" aria-label="Filter by category"><button class="chip" aria-pressed="${filter==="All"}" data-f="All">All <span class="n">${list.filter(t=>!t.done).length}</span></button>`+
      names.map((c,i)=>`<button class="chip" style="--d:${Math.min(i+1,10)}" aria-pressed="${filter===c}" data-f="${esc(c)}"><span class="dot" style="background:${cc(c)}"></span>${esc(c)} <span class="n">${m[c].open}</span></button>`).join("")+`</div>`;
   if(!examples&&filter!=="All"&&tasks.some(t=>t.cat===filter&&!t.done))h+=`<div class="share-row"><button class="linkbtn" id="shareList">Share ${esc(filter)} list</button></div>`;
-  if(!examples&&open.length&&!pref("swipeTip")&&matchMedia("(pointer:coarse)").matches)
-    h+=`<div class="note" style="--d:0"><span>Tip: swipe a task right to finish it, or left to move it to tomorrow.</span><button id="tipOk">Got it</button></div>`;
   let any=false;
   for(const [name,cls,arr] of groups){
     if(!arr.length)continue;any=true;
     if(name!=="No date")arr.sort(by());
     h+=`<div class="sec ${cls}"><h3 style="--d:${Math.min(D++,14)}">${name} <span class="cnt">${arr.length}</span></h3><div class="list">${arr.map(t=>rowHTML(t)).join("")}</div></div>`;
   }
-  if(!any) h+=`<div class="list" style="margin-top:14px"><div class="empty">${filter==="All"?"Nothing open. Add a task above or import from Keep.":"Nothing open in "+esc(filter)+"."}</div></div>`;
+  if(!any) h+=`<div class="list" style="margin-top:14px"><div class="empty">${filter==="All"?"Nothing open.":"Nothing open in "+esc(filter)+"."}</div></div>`;
   if(done.length) h+=`<details class="sec donebox"${openEdit&&done.some(t=>t.id===openEdit)||doneOpen?" open":""}><summary><h3 style="--d:${Math.min(D++,14)}">Done ▸ <span class="cnt">${done.length}</span></h3></summary><div class="list">${done.slice(0,50).map(t=>rowHTML(t)).join("")}</div></details>`;
   el.classList.toggle("enter",animIn);
   el.innerHTML=h;
@@ -908,19 +907,19 @@ function renderDash(list,now,t0){
       <div class="mode-seg" role="group" aria-label="Map view">${[["cat","Category"],["week","Week"],["day","Today"]].map(([k,n])=>`<button data-mmode="${k}" aria-pressed="${mode===k}">${n}</button>`).join("")}</div></div>
     ${mapHTML(list,now,t0,mode)}
     ${open.length?`<button class="btn auto plan-btn" id="autoBtn"><span class="spark">✦</span> Plan my week</button>`:""}</div>`;
-  P.heat=`<div class="panel" style="--d:4"><h4>Status heatmap <small>% done per day ${infoBtn("heat")}</small></h4>${heatmapHTML(list,now,t0)}</div>`;
+  P.heat=`<div class="panel" style="--d:4"><h4>Status heatmap ${infoBtn("heat")}</h4>${heatmapHTML(list,now,t0)}</div>`;
   P.ring=`<div class="panel ring" style="--d:4"><svg viewBox="0 0 150 150" role="img" aria-label="Today ${Math.round(pct*100)} percent complete">
       <circle cx="75" cy="75" r="${R}" fill="none" stroke="var(--sunk)" stroke-width="14"/>
       <circle class="prog" cx="75" cy="75" r="${R}" fill="none" stroke="var(--accent)" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct)}" transform="rotate(-90 75 75)" style="--c:${C}"/>
       <text x="75" y="80" text-anchor="middle" fill="var(--ink)" style="font:800 30px var(--f-display)"><tspan data-n="${Math.round(pct*100)}">${Math.round(pct*100)}</tspan>%</text>
       <text x="75" y="100" text-anchor="middle" fill="var(--muted)" style="font:600 11px var(--f-body)">${todayDone} of ${todayTotal}</text>
     </svg><div class="lbl">Today's progress</div></div>`;
-  P.cats=`<div class="panel" style="--d:5"><h4>By category <small>open vs done</small></h4><div class="bars">${names.length?names.map((c,ci)=>{const o=m[c].open,d=m[c].done;return `<div class="bar" style="--d:${ci}"><span class="nm" style="color:${cc(c)}">${esc(c)}</span><span class="track" style="width:${Math.max(8,(o+d)/cmax*100)}%"><span style="width:${o/(o+d)*100}%;background:${cc(c)}"></span><span style="width:${d/(o+d)*100}%;background:color-mix(in srgb,${cc(c)} 35%,var(--sunk))"></span></span><span class="num mono">${o} / ${d}</span></div>`}).join(""):`<div class="empty">No tasks yet.</div>`}</div>
+  P.cats=`<div class="panel" style="--d:5"><h4>By category ${hint("Open and done tasks in each category.")}</h4><div class="bars">${names.length?names.map((c,ci)=>{const o=m[c].open,d=m[c].done;return `<div class="bar" style="--d:${ci}"><span class="nm" style="color:${cc(c)}">${esc(c)}</span><span class="track" style="width:${Math.max(8,(o+d)/cmax*100)}%"><span style="width:${o/(o+d)*100}%;background:${cc(c)}"></span><span style="width:${d/(o+d)*100}%;background:color-mix(in srgb,${cc(c)} 35%,var(--sunk))"></span></span><span class="num mono">${o} / ${d}</span></div>`}).join(""):`<div class="empty">No tasks yet.</div>`}</div>
       <div class="legend"><span><i style="background:var(--muted)"></i>Open</span><span><i style="background:color-mix(in srgb,var(--muted) 35%,var(--sunk))"></i>Done</span></div></div>`;
-  P.week=`<div class="panel" style="--d:6"><h4>Coming up <small>open tasks due, next 7 days</small></h4><div class="week">${week.map((w,i)=>`<div style="--d:${i}" class="day${w.n&&w.n===wmax?" max":w.n?" hot":""}">${i===0?"Today":new Date(w.s).toLocaleDateString("en-IN",{weekday:"short"})}<b>${w.n}</b>${new Date(w.s).getDate()}</div>`).join("")}</div>
+  P.week=`<div class="panel" style="--d:6"><h4>Coming up ${hint("Open tasks due on each of the next 7 days.")}</h4><div class="week">${week.map((w,i)=>`<div style="--d:${i}" class="day${w.n&&w.n===wmax?" max":w.n?" hot":""}">${i===0?"Today":new Date(w.s).toLocaleDateString("en-IN",{weekday:"short"})}<b>${w.n}</b>${new Date(w.s).getDate()}</div>`).join("")}</div>
     ${next.length?`<div class="list" style="margin-top:12px">${next.map(t=>`<div class="row" style="--cc:${cc(t.cat)};grid-template-columns:auto 1fr auto"><span class="tick" style="border-style:dotted"></span><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="cat">${esc(t.cat)}</span></div></div><span class="mono ${t.due<now?"late":""}" style="color:${t.due<now?"var(--danger)":"var(--muted)"}">${esc(fmtDue(t.due))}</span></div>`).join("")}</div>`:""}
   </div>`;
-  P.chart=`<div class="panel" style="--d:7"><h4>Last 14 days <small>tasks completed vs added</small></h4><div class="chart">${chart14(days)}</div>
+  P.chart=`<div class="panel" style="--d:7"><h4>Last 14 days ${hint("Tasks finished and tasks added on each of the last 14 days.")}</h4><div class="chart">${chart14(days)}</div>
     <div class="legend"><span><i style="background:var(--accent)"></i>Completed</span><span><i style="background:var(--muted)"></i>Added</span></div></div>`;
   P.rem=`<div class="panel" style="--d:8" id="remPanel">${remindersPanelHTML(open,now)}</div>`;
   const hide=new Set(pref("dashHidden")||[]),on=k=>!hide.has(k),parts=[];
@@ -1190,7 +1189,6 @@ function treemapHTML(list,now,t0){
       :`<div class="tmap-tile ${b.k}${b.k==="g"&&b.sub==="Done"?" done":""}" style="${style}" role="img" aria-label="${esc(label)}" title="${esc(label)}">${inner}</div>`;
   }).join("");
   return `<div class="tm-wrap"><div class="tmap" role="group" aria-label="Categories" style="height:${px}px">${tiles}</div>
-    <div class="hm-legend"><span><i style="background:var(--danger)"></i>Red · overdue</span><span><i style="background:var(--amber)"></i>Amber · due today or at risk</span><span><i style="background:var(--ok)"></i>Green · on track or done</span></div>
     <div class="tm-foot"><span></span><button class="linkbtn" data-tmgo>See as a list</button></div>
     ${infoText("map","Each tile is a category. Bigger tiles have more tasks, split into red (late), amber (due today or at risk) and green (on track or done). Tap one to see its tasks.")}</div>`;
 }
@@ -1212,7 +1210,7 @@ function mapHTML(list,now,t0,mode){
   if(mode==="day"){
     const pick=t=>t.due&&t.due<t0+DAY&&(!t.done||(t.doneAt||0)>=t0);
     const rest=list.filter(t=>!t.done&&!(t.due&&t.due<t0+DAY)).length;
-    return taskTreemapHTML(list,now,t0,pick,`<p class="tm-crumb day-crumb"><b>Today</b>${rest?` · ${rest} more later or without a date`:""}</p>`,"today","Nothing due today. Tap Week to look ahead.");
+    return taskTreemapHTML(list,now,t0,pick,``,"today","Nothing due today. Tap Week to look ahead.");
   }
   if(mode==="week"){
     if(tmDay){
@@ -1290,7 +1288,6 @@ function taskTreemapHTML(list,now,t0,pick=()=>true,head="",pre="",emptyMsg=""){
   }).join("");
   return `<div class="tm-wrap">${chips}${head}
     <div class="tmap" role="group" aria-label="${cat?esc(cat)+" tasks":"Your tasks"}" style="height:${px}px">${tiles}</div>
-    <div class="hm-legend"><span><i style="background:var(--danger)"></i>Late ${n.r}</span><span><i style="background:var(--amber)"></i>Today ${n.a}</span><span><i style="background:var(--ok)"></i>On track ${n.g}</span></div>
     ${foot}
     ${infoText("map","Each tile is a task. Red is late, amber is due today, green is on track. Bigger tiles need you sooner. Tap a task to finish it, move it, change it or delete it.")}</div>`;
 }
@@ -1460,7 +1457,7 @@ function taskPopHTML(t){ // pop-up for one task, opened from the task map: finis
   return `<div class="rv"><div class="row rag-${k}${t.done?" done":""}" style="--cc:${cc(t.cat)};grid-template-columns:1fr auto"><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="cat">${esc(t.cat)}</span>${t.pri?'<span class="flag">● Important</span>':""}${t.rep?`<span>↻ ${esc(repLabel(t.rep))}</span>`:""}</div></div>
       <span class="mono" style="color:${late?"var(--danger)":"var(--muted)"}">${esc(when)}</span></div>
     ${t.note?`<p class="rv-sub" style="overflow-wrap:anywhere;white-space:pre-wrap">${esc(String(t.note))}</p>`:""}
-    ${t.done?`<p class="rv-sub">Dusted. Tap Not done to bring it back.</p>`:`<div class="when-row" role="group" aria-label="When"><span class="when-k">When?</span>
+    ${t.done?"":`<div class="when-row" role="group" aria-label="When"><span class="when-k">When?</span>
       <button class="chip${on(t0)}" data-tp="d:${t0}">Today</button><button class="chip${on(t0+DAY)}" data-tp="d:${t0+DAY}">Tomorrow</button><button class="chip${wkend!==t0&&on(wkend)?" on":""}" data-tp="d:${wkend}">${wkend===t0?"This weekend":"Weekend"}</button>
       <label class="chip pick">Pick a day<input type="date" id="tpDay" min="${toLocalInput(t0).slice(0,10)}" value="${t.due?toLocalInput(t.due).slice(0,10):""}"></label></div>`}
     <div class="rv-acts pop-acts">${t.done?`<button class="btn pri" data-tp="undo">Not done</button>`:`<button class="btn pri big" data-tp="done">✓ Done</button>`}
