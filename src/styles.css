@@ -964,3 +964,17 @@ body:not([data-view="dash"]) .subbar{display:flex}
 .cat-pick .chip{min-height:38px;padding:0 13px;font-size:.9rem}
 #addForm~.cat-pick{display:flex}
 .dcat{font:inherit;font-weight:700;font-size:.82rem;border:1.5px solid var(--line);border-radius:99px;background:var(--surface);padding:3px 8px;max-width:150px}
+/* in the Add pop-up the hint stays put, so tapping Close while typing does not shift the buttons under your finger */
+#addSheet .parse{display:flex}
+#addSheet .parse:empty{display:none}
+
+/* ---------- hints: a bubble next to the ⓘ instead of text on the screen ---------- */
+.hint-pop{position:fixed;z-index:90;background:var(--ink);color:var(--surface);border-radius:12px;padding:11px 13px;font-size:.88rem;line-height:1.45;box-shadow:0 10px 30px rgba(0,0,0,.25);animation:hintIn .16s ease-out}
+.hint-pop b{color:inherit}
+.hint-pop::before{content:"";position:absolute;left:calc(var(--ax) - 6px);width:12px;height:12px;background:inherit;transform:rotate(45deg)}
+.hint-pop.below::before{top:-5px}
+.hint-pop.above::before{bottom:-5px}
+.hint-pop p{margin:0}.hint-pop p+p{margin-top:6px}
+@keyframes hintIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.sset h3 .info-b,.sheet-head h2 .info-b{margin-left:8px;vertical-align:2px}
+.sw-t .info-b{margin-left:6px;vertical-align:1px}

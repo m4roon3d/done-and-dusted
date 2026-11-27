@@ -1,5 +1,5 @@
 // Settings sheet (reminders, backup & restore, storage) and the Dashboard's reminders panel.
-import { infoBtn, infoText } from "./info.js";
+import { infoBtn, infoText, hint } from "./info.js";
 import { isNative, platform, saveFile, haptic } from "./platform.js";
 import { permissionState, requestPermission, exactAlarmState, openExactAlarmSetting, sync } from "./notify.js";
 import { pref, setPref } from "./prefs.js";
@@ -8,7 +8,7 @@ import { makeBackup, readBackup, restore, countTasks, isPersisted, requestPersis
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const VERSION = "1.4 · build " + (typeof __APP_BUILD__ === "undefined" ? "dev" : __APP_BUILD__);
+const VERSION = "1.5 · build " + (typeof __APP_BUILD__ === "undefined" ? "dev" : __APP_BUILD__);
 let app = null;          // bridge into main.js
 let perm = "prompt", exact = "granted";
 let pendingRestore = null;
@@ -67,7 +67,7 @@ async function setAlerts(on) {
   app.render();
   if (!$("#sheet").hidden) drawSheet();
 }
-const switchHTML = (id, on, label, sub) => `<label class="sw" for="${id}"><span class="sw-t"><b>${label}</b><small>${sub}</small></span>
+const switchHTML = (id, on, label, sub) => `<label class="sw" for="${id}"><span class="sw-t"><b>${label}${sub ? hint(sub) : ""}</b></span>
   <input type="checkbox" id="${id}" role="switch" ${on ? "checked" : ""}><span class="sw-k" aria-hidden="true"></span></label>`;
 
 async function enableReminders() {
@@ -112,6 +112,7 @@ export function closeSheet() {
 
 async function drawSheet() {
   const n = await countTasks().catch(() => 0);
+  const hidden = new Set(pref("dashHidden") || []), lastBk = pref("backedUp");
   const prot = isNative ? true : await isPersisted();
   const remLine = perm === "granted"
     ? (isNative ? "Phone notifications are allowed. Alerts arrive at each due time, even when the app is closed." : "Browser notifications are allowed, so you're alerted even when this tab is in the background.")
@@ -119,48 +120,49 @@ async function drawSheet() {
     : perm === "unsupported" ? "Notifications aren't available on this device; you still get the pop-up and chime." : (isNative ? "Phone notifications aren't allowed yet, so alerts only show while the app is open." : "Browser notifications aren't allowed yet, so alerts only show while this tab is in front.");
   $("#sheetBody").innerHTML = `
     <section class="sset">
-      <h3>Look</h3>
+      <h3>Look${pref("look") !== "night" && effectiveLook().id === "night" ? hint("Showing Night Garden now because your phone is in dark mode.") : ""}</h3>
       <div class="looks" role="group" aria-label="Choose a look">${LOOKS.map((l) => `<button class="look" data-look-id="${l.id}" aria-pressed="${pref("look") === l.id}">
         <span class="sw3" style="background:${l.swatch[0]}"><i class="a" style="background:${l.swatch[1]}"></i><i class="b" style="background:${l.swatch[2]}"></i><i class="c" style="background:${l.swatch[2]}"></i></span>${esc(l.name)}</button>`).join("")}</div>
       ${pref("look") === "night" ? "" : switchHTML("swNight", pref("autoNight"), "Night Garden after dark", "Switch to the dark look when the phone is in dark mode")}
-      ${pref("look") !== "night" && effectiveLook().id === "night" ? `<p>Showing Night Garden now because your phone is in dark mode.</p>` : ""}
       ${switchHTML("swSplash", pref("splashSound"), "Opening music", "The little tune with the animation when the app opens")}
     </section>
     <section class="sset">
-      <h3>Alerts</h3>
+      <h3>Home screen${hint("Tap a part to show or hide it on the home screen.")}</h3>
+      <div class="dash-chips" role="group" aria-label="Show on the home screen">${app.homeParts().map(([k, nm]) => `<button class="chip" data-dash="${k}" aria-pressed="${!hidden.has(k)}">${esc(nm)}</button>`).join("")}</div>
+      ${hidden.size ? `<div class="acts"><button class="btn sm" id="sDashAll">Show all</button></div>` : ""}
+    </section>
+    <section class="sset">
+      <h3>Alerts${hint(pref("alerts") ? esc(remLine) : "Alerts are off. Overdue tasks still show in red.")}</h3>
       ${switchHTML("swAlerts", pref("alerts"), "Alert me when a task is due", isNative ? "Phone notification, pop-up and chime" : "Pop-up, chime and browser notification")}
       ${pref("alerts") ? switchHTML("swSound", pref("sound"), "Chime sound", "Played with the pop-up while the app is open") : ""}
-      ${pref("alerts") ? `<p>${esc(remLine)}</p>` : `<p>Alerts are off. Overdue tasks still show in red in your lists.</p>`}
       ${pref("alerts") ? `${switchHTML("swBrief", pref("brief"), "Morning brief", "What's due and where to start, once each morning")}
         ${pref("brief") ? `<label class="brief-at">Brief at <input type="time" id="sBriefAt" value="${esc(pref("briefAt") || "08:00")}"></label>` : ""}` : ""}
       ${pref("alerts") && perm === "prompt" ? `<button class="btn pri" id="sRemOn">${isNative ? "Allow phone notifications" : "Allow browser notifications"}</button>` : ""}
       ${pref("alerts") && isNative && platform === "android" && perm === "granted" && exact !== "granted" ? `<button class="btn" id="sExact">Allow exact alarms</button>` : ""}
     </section>
     <section class="sset">
-      <h3>Import</h3>
-      <p>Bring in your Google Keep notes, or paste a list, and they become tasks.</p>
+      <h3>Import${hint("Bring in your Google Keep notes, or paste a list, and they become tasks.")}</h3>
       <div class="acts"><button class="btn" id="sImport">Import from Google Keep</button></div>
     </section>
     <section class="sset">
-      <h3>Backup</h3>
-      <p>Your tasks are stored only on this ${isNative ? "phone" : "device, in this browser"}. Save a backup now and then, and use it to move your tasks to another phone or browser.</p>
+      <h3>Backup${hint(`Your tasks are stored only on this ${isNative ? "phone" : "device, in this browser"}. No account, no cloud. Save a backup now and then, and use it to move your tasks to another phone or browser.`)}</h3>
+      <p class="bk-last">${typeof lastBk === "number" ? `Last backup: <b>${esc(new Date(lastBk).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }))}</b>` : "<b>No backup saved yet.</b>"}</p>
       <div class="acts"><button class="btn pri" id="sBackup">Save a backup</button><button class="btn" id="sRestore">Restore from backup</button></div>
       <div id="restoreBox"></div>
     </section>
     <section class="sset">
-      <h3>Start over</h3>
-      ${n ? `<p>Delete every task on this ${isNative ? "phone" : "device"}. Your look, alerts and other settings stay. Save a backup first if you might want them back.</p>
+      <h3>Start over${n ? hint(`Deletes every task on this ${isNative ? "phone" : "device"}. Your look, alerts and other settings stay. Save a backup first if you might want them back.`) : ""}</h3>
+      ${n ? `
       <div class="acts"><button class="btn warn" id="sReset">Delete all ${n} task${n === 1 ? "" : "s"}</button><button class="btn" id="sResetBackup">Save a backup first</button></div>`
       : `<p>No tasks saved, so there's nothing to delete.</p>`}
     </section>
     <section class="sset">
-      <h3>Storage</h3>
+      <h3>Storage${!isNative && !prot ? hint("Browsers may clear data for sites you rarely visit. Installing the app (Add to Home screen) usually protects it.") : ""}</h3>
       <dl class="kv">
         <dt>Tasks saved</dt><dd class="mono">${n}</dd>
         <dt>Where</dt><dd>${isNative ? "On this phone" : "In this browser (IndexedDB)"}</dd>
         ${isNative ? "" : `<dt>Protected from clean-up</dt><dd>${prot ? "Yes" : prot === false ? `No <button class="btn sm" id="sPersist">Ask again</button>` : "Unknown"}</dd>`}
       </dl>
-      ${!isNative && !prot ? `<p class="rem-p">Browsers may clear data for sites you rarely visit. Installing the app (Add to Home screen) usually protects it.</p>` : ""}
     </section>
     <section class="sset">
       <h3>Planning</h3>
@@ -172,6 +174,11 @@ async function drawSheet() {
     <p class="about">Done &amp; Dusted ${VERSION} · ${isNative ? (platform === "ios" ? "iPhone" : "Android") : "Web"} · Plan it · Do it · Dust it</p>`;
   const b = (id) => document.getElementById(id);
   b("sImport").onclick = () => { closeSheet(); app.openImport(); };
+  document.querySelectorAll("#sheetBody [data-dash]").forEach((x) => x.onclick = () => {
+    const hid = new Set(pref("dashHidden") || []), k = x.dataset.dash;
+    hid.has(k) ? hid.delete(k) : hid.add(k); setPref("dashHidden", [...hid]); haptic(); app.render(); drawSheet();
+  });
+  if (b("sDashAll")) b("sDashAll").onclick = () => { setPref("dashHidden", []); haptic(); app.render(); drawSheet(); };
   document.querySelectorAll("[data-look-id]").forEach((btn) => { btn.onclick = () => changeLook(() => setLook(btn.dataset.lookId)); });
   if (b("swNight")) b("swNight").onchange = (e) => changeLook(() => setAutoNight(e.target.checked));
   b("swAlerts").onchange = (e) => setAlerts(e.target.checked);
