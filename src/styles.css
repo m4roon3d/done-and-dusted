@@ -611,25 +611,11 @@ button.tmap-tile:focus-visible{outline:3px solid var(--ink);outline-offset:-3px;
    Each look redefines the colour and font tokens. Shapes come from data-shape below.
    Red / amber / green keep their meaning in every look; the accent never uses those hues
    (Marigold and Honey Drop are the exception: their accent is the amber). */
-:root[data-look="pastel"]{
-  --bg:#F3F0FA; --surface:#FFFFFF; --sunk:#E9E4F5; --line:#DDD6EE; --ink:#2D2A45; --muted:#625E80;
-  --accent:#6B4EE6; --accent-ink:#FFFFFF; --danger:#C93A55; --ok:#25916B; --amber:#D98324; --amber-ink:#2A1A00; --amber-text:#9A5B00;
-  --f-display:"Quicksand Variable",ui-rounded,system-ui,sans-serif; --f-body:"Nunito Variable",system-ui,sans-serif;
-  --f-amp:var(--f-display); --amp-style:normal; --amp-weight:700;
-  --shadow:0 6px 18px rgba(107,78,230,.10); --puff1:#F7B8C6; --puff2:#BBD9F7;
-}
 :root[data-look="honey"]{
   --bg:#F1F3F6; --surface:#FFFFFF; --sunk:#E4E8EE; --line:#D9DFE7; --ink:#1B2430; --muted:#5A6878;
   --accent:#E39A14; --accent-ink:#2A1A00; --danger:#C8432F; --ok:#2E8B57; --amber:#E39A14; --amber-ink:#2A1A00; --amber-text:#8F5E00;
   --f-amp:var(--f-display); --amp-style:normal; --amp-weight:800;
   --shadow:0 6px 18px rgba(27,36,48,.08); --puff1:#F6D58A; --puff2:#C9D2DC;
-}
-:root[data-look="sky"]{
-  --bg:#EEF4FB; --surface:#FFFFFF; --sunk:#DCE8F6; --line:#CFDDF0; --ink:#172B4D; --muted:#53678A;
-  --accent:#2563EB; --accent-ink:#FFFFFF; --danger:#C23535; --ok:#1F9D6B; --amber:#E08A1E; --amber-ink:#2A1A00; --amber-text:#9A5B00;
-  --f-display:"Baloo 2 Variable",ui-rounded,system-ui,sans-serif; --f-body:"DM Sans Variable",system-ui,sans-serif;
-  --f-amp:var(--f-display); --amp-style:normal; --amp-weight:800;
-  --shadow:0 6px 18px rgba(37,99,235,.09); --puff1:#9DBDF5; --puff2:#C6D9F8;
 }
 :root[data-look="bubblegum"]{
   --bg:#FBF0F5; --surface:#FFFFFF; --sunk:#F3DDE8; --line:#EBCFDD; --ink:#3A1F33; --muted:#7A5670;
@@ -979,12 +965,27 @@ body:not([data-view="dash"]) .subbar{display:flex}
 .sset h3 .info-b,.sheet-head h2 .info-b{margin-left:8px;vertical-align:2px}
 .sw-t .info-b{margin-left:6px;vertical-align:1px}
 
-/* ---------- watermark: the splash scene, faint, behind everything you tap ---------- */
-#wmark{position:fixed;inset:0;z-index:30;pointer-events:none;display:grid;place-items:center;color:var(--ink);opacity:.055;mix-blend-mode:multiply}
-#wmark svg{width:min(100vw,560px);height:auto;max-height:90vh;transform:translateY(5vh) rotate(-8deg)}
-#wmark .wm-f{fill:currentColor;fill-opacity:.35}
-#wmark .wm-t{font:800 34px var(--f-display,system-ui);letter-spacing:-1.2px}
-#wmark .wm-tag{font:800 10.5px var(--f-body,system-ui);letter-spacing:2.4px}
-/* dark looks: multiply would vanish, so lighten instead */
-:root[data-look="night"] #wmark{color:#fff;mix-blend-mode:screen;opacity:.045}
-@media print{#wmark{display:none}}
+/* ---------- watermark: the splash scene, fixed to the screen, on the page and the white cards only.
+   Coloured tiles paint over it, so it never muddies them; empty white space shows it. ---------- */
+:root{--wm-img:url("./wm-ink.svg")}
+:root[data-look="night"]{--wm-img:url("./wm-light.svg")}
+body,.panel,.tile{background-image:var(--wm-img);background-attachment:fixed;background-repeat:no-repeat;background-position:center 62%;background-size:min(108vw,600px) auto}
+@media print{body,.panel,.tile{background-image:none}}
+
+/* ---------- paper: the page colour behind the white cards (Settings → Look → Paper) ----------
+   Light looks take the paper; Marigold in dark mode takes its dark twin. Night Garden keeps its own. */
+:root[data-paper="marigold"]:not([data-look="night"]){--bg:#FFF5E1;--sunk:#F6EBD3;--line:#EBDDBF}
+:root[data-paper="cream"]:not([data-look="night"]){--bg:#FBF6EC;--sunk:#F1EADD;--line:#E6DDCC}
+:root[data-paper="sand"]:not([data-look="night"]){--bg:#F5EDE0;--sunk:#ECE2D2;--line:#E0D4C0}
+@media (prefers-color-scheme:dark){
+  /* each paper's dark twin: Marigold tint -> Mocha whisper, Cream -> Soft charcoal, Warm sand -> Graphite */
+  :root[data-look="marigold"]:not([data-theme="light"]){--wm-img:url("./wm-light.svg")}
+  :root[data-paper="marigold"][data-look="marigold"]:not([data-theme="light"]){--bg:#181614;--surface:#22201D;--sunk:#141211;--line:#312D29;--ink:#F1EDE7;--muted:#ABA49A}
+  :root[data-paper="cream"][data-look="marigold"]:not([data-theme="light"]){--bg:#151514;--surface:#1F1E1C;--sunk:#121211;--line:#2D2B28;--ink:#EFEEEC;--muted:#A6A39E}
+  :root[data-paper="sand"][data-look="marigold"]:not([data-theme="light"]){--bg:#141518;--surface:#1E2024;--sunk:#111215;--line:#2B2E33;--ink:#E8EAED;--muted:#9EA4AC}
+}
+.papers{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.paper-b{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);background:var(--surface);border-radius:99px;padding:6px 14px 6px 6px;font:inherit;font-weight:700;font-size:.9rem;color:var(--ink);cursor:pointer}
+.paper-b i{width:26px;height:26px;border-radius:50%;border:1px solid rgba(0,0,0,.12)}
+.paper-b[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.sset .sub-k{font-weight:700;font-size:.86rem;margin:12px 0 2px}

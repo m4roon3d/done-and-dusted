@@ -3,12 +3,12 @@ import { infoBtn, infoText, hint } from "./info.js";
 import { isNative, platform, saveFile, haptic } from "./platform.js";
 import { permissionState, requestPermission, exactAlarmState, openExactAlarmSetting, sync } from "./notify.js";
 import { pref, setPref } from "./prefs.js";
-import { LOOKS, setLook, setAutoNight, effectiveLook } from "./theme.js";
+import { LOOKS, PAPERS, paperId, setPaper, setLook, setAutoNight, effectiveLook } from "./theme.js";
 import { makeBackup, readBackup, restore, countTasks, isPersisted, requestPersist } from "./store.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const VERSION = "1.6 · build " + (typeof __APP_BUILD__ === "undefined" ? "dev" : __APP_BUILD__);
+const VERSION = "1.7 · build " + (typeof __APP_BUILD__ === "undefined" ? "dev" : __APP_BUILD__);
 let app = null;          // bridge into main.js
 let perm = "prompt", exact = "granted";
 let pendingRestore = null;
@@ -123,6 +123,8 @@ async function drawSheet() {
       <h3>Look${pref("look") !== "night" && effectiveLook().id === "night" ? hint("Showing Night Garden now because your phone is in dark mode.") : ""}</h3>
       <div class="looks" role="group" aria-label="Choose a look">${LOOKS.map((l) => `<button class="look" data-look-id="${l.id}" aria-pressed="${pref("look") === l.id}">
         <span class="sw3" style="background:${l.swatch[0]}"><i class="a" style="background:${l.swatch[1]}"></i><i class="b" style="background:${l.swatch[2]}"></i><i class="c" style="background:${l.swatch[2]}"></i></span>${esc(l.name)}</button>`).join("")}</div>
+      ${pref("look") === "night" ? "" : `<p class="sub-k">Paper${hint("The colour behind the cards. When your phone is in dark mode, Marigold uses its dark twin: Marigold tint → Mocha, Cream → Charcoal, Warm sand → Graphite.")}</p>
+      <div class="papers" role="group" aria-label="Choose a paper">${PAPERS.map((x) => `<button class="paper-b" data-paper-id="${x.id}" aria-pressed="${paperId() === x.id}"><i style="background:${x.swatch}"></i>${esc(x.name)}</button>`).join("")}</div>`}
       ${pref("look") === "night" ? "" : switchHTML("swNight", pref("autoNight"), "Night Garden after dark", "Switch to the dark look when the phone is in dark mode")}
       ${switchHTML("swSplash", pref("splashSound"), "Opening music", "The little tune with the animation when the app opens")}
     </section>
@@ -180,6 +182,7 @@ async function drawSheet() {
   });
   if (b("sDashAll")) b("sDashAll").onclick = () => { setPref("dashHidden", []); haptic(); app.render(); drawSheet(); };
   document.querySelectorAll("[data-look-id]").forEach((btn) => { btn.onclick = () => changeLook(() => setLook(btn.dataset.lookId)); });
+  document.querySelectorAll("[data-paper-id]").forEach((btn) => { btn.onclick = () => changeLook(() => setPaper(btn.dataset.paperId)); });
   if (b("swNight")) b("swNight").onchange = (e) => changeLook(() => setAutoNight(e.target.checked));
   b("swAlerts").onchange = (e) => setAlerts(e.target.checked);
   b("swSplash").onchange = (e) => { setPref("splashSound", e.target.checked); haptic(); };
