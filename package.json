@@ -1,6 +1,6 @@
 {
   "name": "done-and-dusted",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "private": true,
   "description": "Done & Dusted: plan it, do it, dust it. A task manager with Google Keep import, reminders, a RAG dashboard and week planning.",
   "type": "module",
