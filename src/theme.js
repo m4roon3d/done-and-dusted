@@ -5,13 +5,19 @@ import { pref, setPref } from "./prefs.js";
 
 export const LOOKS = [
   { id: "marigold",  name: "Marigold",    shape: "classic", mark: "tile",   swatch: ["#EEF1F4", "#E39A14", "#16202B"] },
-  { id: "pastel",    name: "Soft Pastel", shape: "soft",    mark: "circle", swatch: ["#F3F0FA", "#6B4EE6", "#2D2A45"] },
   { id: "honey",     name: "Honey Drop",  shape: "soft",    mark: "circle", swatch: ["#F1F3F6", "#E39A14", "#1B2430"] },
-  { id: "sky",       name: "Sky Kite",    shape: "round",   mark: "kite",   swatch: ["#EEF4FB", "#2563EB", "#172B4D"] },
   { id: "bubblegum", name: "Bubblegum",   shape: "soft",    mark: "blob",   swatch: ["#FBF0F5", "#C2187A", "#3A1F33"] },
   { id: "seaglass",  name: "Sea Glass",   shape: "line",    mark: "pebble", swatch: ["#EAF6F6", "#0B6FA4", "#12343B"] },
   { id: "night",     name: "Night Garden", shape: "soft",   mark: "circle", swatch: ["#1E1B2E", "#B9A5FF", "#F1EEFB"], dark: true },
 ];
+// Paper: the page colour behind the cards, for every light look. Each has a dark twin for Marigold in dark mode.
+export const PAPERS = [
+  { id: "marigold", name: "Marigold tint", swatch: "#FFF5E1" },
+  { id: "cream",    name: "Cream",         swatch: "#FBF6EC" },
+  { id: "sand",     name: "Warm sand",     swatch: "#F5EDE0" },
+];
+export const paperId = () => (PAPERS.find((x) => x.id === pref("paper")) || PAPERS[0]).id;
+export function setPaper(id) { setPref("paper", id); return applyLook(); }
 const byId = (id) => LOOKS.find((l) => l.id === id) || LOOKS[0];
 const darkMQ = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
 
@@ -27,6 +33,7 @@ export function applyLook() {
   el.dataset.look = look.id;
   el.dataset.shape = look.shape;
   el.dataset.mark = look.mark;
+  el.dataset.paper = paperId();
   // Marigold keeps its own dark version and follows the phone; every other look is fixed light or dark.
   if (look.id === "marigold") delete el.dataset.theme; else el.dataset.theme = look.dark ? "dark" : "light";
   // Browser and status-bar colour follow the page background.
