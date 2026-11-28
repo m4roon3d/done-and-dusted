@@ -1191,7 +1191,7 @@ function treemapHTML(list,now,t0){
   }).join("");
   return `<div class="tm-wrap"><div class="tmap" role="group" aria-label="Categories" style="height:${px}px">${tiles}</div>
     <div class="tm-foot"><span></span><button class="linkbtn" data-tmgo>See as a list</button></div>
-    ${infoText("map","Each tile is a category: what’s open, plus what you finished this week. Colours: <b>red</b> late · <b>mustard</b> due today or tomorrow, or Important · <b>lilac</b> planned for later · <b>green</b> done. Tap one to see its tasks.")}</div>`;
+    ${infoText("map","Each tile is a category: what’s open, plus what you finished this week. Colours: <b>terracotta</b> late · <b>mustard</b> due today or tomorrow, or Important · <b>plum</b> planned for later · <b>sage</b> done. Tap one to see its tasks.")}</div>`;
 }
 /* Which tile of the week view a task sits in: "late" (open, due before today), a day start (ms), "later" or "none" */
 function dayKey(t,t0){
@@ -1251,7 +1251,7 @@ function weekRowsHTML(list,now,t0){
   }).join("");
   return `<div class="tm-wrap"><div class="wk" role="group" aria-label="Your week">${rows}</div>
     <div class="tm-foot">${doneN?`<button class="linkbtn" data-tmdone aria-pressed="${tmDone}">${tmDone?"Hide done":`Show done (${doneN})`}</button>`:"<span></span>"}<button class="linkbtn" data-tmgo>See as a list</button></div>
-    ${infoText("map","Each row is a day. Colours: <b>red</b> late · <b>mustard</b> due today or tomorrow, Important, or a busy day · <b>lilac</b> planned · <b>green</b> done. Tap a day to see its tasks, or + to add one for that day.")}</div>`;
+    ${infoText("map","Each row is a day. Colours: <b>terracotta</b> late · <b>mustard</b> due today or tomorrow, Important, or a busy day · <b>plum</b> planned · <b>sage</b> done. Tap a day to see its tasks, or + to add one for that day.")}</div>`;
 }
 /* Task map: one tile per task, for every category or the one picked in the chips above it.
    Colour = the task's RAG (done tasks green and struck through, shown only on "Show done").
@@ -1290,7 +1290,7 @@ function taskTreemapHTML(list,now,t0,pick=()=>true,head="",pre="",emptyMsg=""){
   return `<div class="tm-wrap">${chips}${head}
     <div class="tmap" role="group" aria-label="${cat?esc(cat)+" tasks":"Your tasks"}" style="height:${px}px">${tiles}</div>
     ${foot}
-    ${infoText("map","Each tile is a task. <b>Red</b> late · <b>mustard</b> due today or tomorrow, or Important · <b>lilac</b> planned for later · <b>green</b> done. Bigger tiles need you sooner. Tap one to finish, move, change or delete it.")}</div>`;
+    ${infoText("map","Each tile is a task. <b>Terracotta</b> late · <b>mustard</b> due today or tomorrow, or Important · <b>plum</b> planned for later · <b>sage</b> done. Bigger tiles need you sooner. Tap one to finish, move, change or delete it.")}</div>`;
 }
 /* One colour per task: Green = done, or open and on track · Amber = open and due today, Important, or on a day
    with 3+ open tasks · Red = open and past its time. A day's square is split by how many tasks are in each. */
