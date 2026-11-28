@@ -978,3 +978,13 @@ body:not([data-view="dash"]) .subbar{display:flex}
 @keyframes hintIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 .sset h3 .info-b,.sheet-head h2 .info-b{margin-left:8px;vertical-align:2px}
 .sw-t .info-b{margin-left:6px;vertical-align:1px}
+
+/* ---------- watermark: the splash scene, faint, behind everything you tap ---------- */
+#wmark{position:fixed;inset:0;z-index:30;pointer-events:none;display:grid;place-items:center;color:var(--ink);opacity:.055;mix-blend-mode:multiply}
+#wmark svg{width:min(100vw,560px);height:auto;max-height:90vh;transform:translateY(5vh) rotate(-8deg)}
+#wmark .wm-f{fill:currentColor;fill-opacity:.35}
+#wmark .wm-t{font:800 34px var(--f-display,system-ui);letter-spacing:-1.2px}
+#wmark .wm-tag{font:800 10.5px var(--f-body,system-ui);letter-spacing:2.4px}
+/* dark looks: multiply would vanish, so lighten instead */
+:root[data-look="night"] #wmark{color:#fff;mix-blend-mode:screen;opacity:.045}
+@media print{#wmark{display:none}}
