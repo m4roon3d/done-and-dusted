@@ -53,7 +53,10 @@ function parseWhen(text,now=new Date()){
     const w=WD.indexOf(m[1].toLowerCase().slice(0,3));const d=sod(now);let add=(w-d.getDay()+7)%7;
     if(add===0)add=7; d.setDate(d.getDate()+add);date=d});
   if(!date&&time){date=sod(now);if(time[0]*60+time[1]<=now.getHours()*60+now.getMinutes())date=new Date(date.getTime()+DAY)}
-  if(date){date=new Date(date);const t=time||[9,0];date.setHours(t[0],t[1],0,0)}
+  if(date){date=new Date(date);let t=time||[9,0];
+    // "today" with no time, said after 9am: this evening (9pm), or the last minute of the day if it's already late, never already overdue
+    if(!time&&sod(date).getTime()===sod(now).getTime()&&now.getHours()>=9)t=now.getHours()<21?[21,0]:[23,59];
+    date.setHours(t[0],t[1],0,0)}
   return {due:date?date.getTime():null,rest:s.replace(/\s+/g," ").trim(),hit};
 }
 function mkDate(d,m,y,now){
