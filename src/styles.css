@@ -989,3 +989,26 @@ body,.panel,.tile{background-image:var(--wm-img);background-attachment:fixed;bac
 .paper-b i{width:26px;height:26px;border-radius:50%;border:1px solid rgba(0,0,0,.12)}
 .paper-b[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .sset .sub-k{font-weight:700;font-size:.86rem;margin:12px 0 2px}
+
+/* ---------- task colours: late (red) · due soon (mustard) · planned (lilac) · done (green) ----------
+   Soft tiles: a pale tint with a strong edge and dark text, like highlighter on paper. */
+:root{--todo:#8B78D0}
+:root[data-look="marigold"],:root[data-look="honey"]{--amber:#CF9F1F;--amber-ink:#2A1A00} /* mustard, so "due soon" never looks like the marigold buttons */
+@media (prefers-color-scheme:dark){:root[data-look="marigold"]:not([data-theme="light"]){--todo:#A99AE6;--amber:#D8AE3A}}
+:root[data-look="night"]{--todo:#9D93C9}
+.tmap-tile.task-tile{color:var(--ink);border-left-width:7px}
+.tmap-tile.task-tile.r{background:color-mix(in srgb,var(--danger) 17%,var(--surface));border-left-color:var(--danger)}
+.tmap-tile.task-tile.a{background:color-mix(in srgb,var(--amber) 22%,var(--surface));border-left-color:var(--amber)}
+.tmap-tile.task-tile.p{background:color-mix(in srgb,var(--todo) 15%,var(--surface));border-left-color:var(--todo)}
+.tmap-tile.task-tile.g{background:color-mix(in srgb,var(--ok) 15%,var(--surface));border-left-color:var(--ok)}
+.tmap-tile.task-tile .sb{color:var(--muted);opacity:1}
+.tmap-tile.task-tile.done{filter:none;opacity:.85}
+.bands-tile .bands i.r,.wk-bar .bands i.r{background:color-mix(in srgb,var(--danger) 34%,var(--surface))}
+.bands-tile .bands i.a,.wk-bar .bands i.a{background:color-mix(in srgb,var(--amber) 42%,var(--surface))}
+.bands-tile .bands i.p,.wk-bar .bands i.p{background:color-mix(in srgb,var(--todo) 30%,var(--surface))}
+.bands-tile .bands i.g,.wk-bar .bands i.g{background:color-mix(in srgb,var(--ok) 30%,var(--surface))}
+.mix .p{background:var(--todo)}
+.rag-pill.g .dot,.hm-lbl .dot.g{background:var(--todo)}
+.rag-tag.g{background:var(--todo)}
+.row.rag-p{box-shadow:inset 4px 0 0 var(--todo)}
+.tmap-tile.add-tile{flex-direction:row;gap:6px}.add-tile .plus{font-size:1.6rem}

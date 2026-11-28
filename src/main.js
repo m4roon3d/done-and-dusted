@@ -1111,7 +1111,8 @@ function renderPlan(list,now,t0){
 let tmTask=null; // task id shown in the pop-up after tapping a task tile
 let tmCat=null; // task map drill-down: the category being shown task by task, or null for all categories
 let hmSel=null,hmReview=null; // hmReview: {color:"r"|"a"|"g", idx, total}
-const RAGW={r:"Red",a:"Amber",g:"Green"};
+const RAGW={r:"Late",a:"Due soon",p:"Planned",g:"Planned"}; // ragTasks' "g" bucket is open, planned work; a tile's "g" is done
+const recentDone=(t,now)=>t.done&&(t.doneAt||0)>=now-7*DAY; // the map counts what's open plus what you finished this week
 function cellStatus(arr,s,now,t0){
   if(!arr.length)return null;
   const open=arr.filter(t=>!t.done);
@@ -1159,14 +1160,14 @@ function treemapHTML(list,now,t0){
   const nCat=new Set(list.map(t=>t.cat)).size,px=nCat<=2?300:nCat<=4?360:420,W=1000,H=Math.round(W*px/340);
   let items;
   {
-    const m={};list.forEach(t=>{(m[t.cat]=m[t.cat]||[]).push(t)});
+    const m={},colour=taskColours(list,now,t0);list.forEach(t=>{if(!t.done||recentDone(t,now))(m[t.cat]=m[t.cat]||[]).push(t)});
     items=Object.keys(m).map(c=>{
-      const arr=m[c],open=arr.filter(t=>!t.done),rg=ragTasks(arr,now,t0),od=rg.r.length,pct=Math.round((arr.length-open.length)/arr.length*100);
-      // each tile is split into red / amber / green bands by task count, so every colour shows
-      const n={r:rg.r.length,a:rg.a.length,g:arr.length-rg.r.length-rg.a.length};
-      return {v:arr.length,cat:c,name:c,sub:`${pct}% done`,sub2:od?`${od} overdue`:`${arr.length} task${arr.length>1?"s":""}`,
-        bands:["r","a","g"].map(k=>({k,n:n[k]}))};
+      const arr=m[c],open=arr.filter(t=>!t.done).length,dw=arr.length-open,n={r:0,a:0,p:0,g:0};arr.forEach(t=>n[colour(t)]++);
+      // each tile is split into late / soon / planned / done bands by task count, so every colour shows
+      return {v:arr.length,cat:c,name:c,sub:open?`${open} to do`:"All done ✓",sub2:n.r?`${n.r} late`:dw?`${dw} done this week`:"",
+        bands:["r","a","p","g"].map(k=>({k,n:n[k]}))};
     }).sort((a,b)=>b.v-a.v||a.name.localeCompare(b.name));
+    if(!items.length)return `<div class="tm-wrap"><div class="tm-empty"><b>All done &amp; dusted ✨</b><span>Nothing open, and nothing finished this week.</span><button class="tm-empty-add" data-addtile data-pre="">+ Add a task</button></div></div>`;
     // size by the square root of the task count, with a floor, so one big category can't squeeze the rest into slivers
     const floor=Math.min(.18,.6/items.length);
     items.forEach(it=>{it.v=Math.sqrt(it.v)});
@@ -1190,7 +1191,7 @@ function treemapHTML(list,now,t0){
   }).join("");
   return `<div class="tm-wrap"><div class="tmap" role="group" aria-label="Categories" style="height:${px}px">${tiles}</div>
     <div class="tm-foot"><span></span><button class="linkbtn" data-tmgo>See as a list</button></div>
-    ${infoText("map","Each tile is a category. Bigger tiles have more tasks, split into red (late), amber (due today or at risk) and green (on track or done). Tap one to see its tasks.")}</div>`;
+    ${infoText("map","Each tile is a category: what’s open, plus what you finished this week. Colours: <b>red</b> late · <b>mustard</b> due today or tomorrow, or Important · <b>lilac</b> planned for later · <b>green</b> done. Tap one to see its tasks.")}</div>`;
 }
 /* Which tile of the week view a task sits in: "late" (open, due before today), a day start (ms), "later" or "none" */
 function dayKey(t,t0){
@@ -1224,8 +1225,8 @@ function mapHTML(list,now,t0,mode){
     return weekRowsHTML(list,now,t0);
   }
   if(tmCat&&list.some(t=>t.cat===tmCat)){
-    const c=tmCat,all=list.filter(t=>t.cat===c),pct=Math.round(all.filter(t=>t.done).length/all.length*100);
-    return taskTreemapHTML(list,now,t0,t=>t.cat===c,crumbHTML("Categories",c,`${pct}% done`),"#"+c.replace(/\s+/g,"-"),"Nothing open in "+c+".");
+    const c=tmCat,open=list.filter(t=>t.cat===c&&!t.done).length,dw=list.filter(t=>t.cat===c&&recentDone(t,now)).length;
+    return taskTreemapHTML(list,now,t0,t=>t.cat===c&&(!t.done||recentDone(t,now)),crumbHTML("Categories",c,`${open} to do${dw?` · ${dw} done this week`:""}`),"#"+c.replace(/\s+/g,"-"),"Nothing open in "+c+".");
   }
   tmCat=null;
   return treemapHTML(list,now,t0);
@@ -1237,10 +1238,10 @@ function weekRowsHTML(list,now,t0){
   const by={};shown.forEach(t=>{const k=dayKey(t,t0);(by[k]=by[k]||[]).push(t)});
   const keys=["late",...[...Array(7)].map((_,i)=>String(t0+i*DAY)),"later","none"].filter(k=>by[k]||/^\d+$/.test(k));
   const rows=keys.map((k,i)=>{
-    const arr=by[k]||[],n={r:0,a:0,g:0};arr.forEach(t=>n[colour(t)]++);
+    const arr=by[k]||[],n={r:0,a:0,p:0,g:0};arr.forEach(t=>n[colour(t)]++);
     const open=arr.filter(t=>!t.done).length,day=/^\d+$/.test(k);
     const date=day&&+k>t0+DAY?new Date(+k).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):"";
-    const bands=["r","a","g"].filter(x=>n[x]).map(x=>`<i class="${x}" style="flex-grow:${n[x]}"></i>`).join("");
+    const bands=["r","a","p","g"].filter(x=>n[x]).map(x=>`<i class="${x}" style="flex-grow:${n[x]}"></i>`).join("");
     const names=arr.filter(t=>!t.done).slice(0,2).map(t=>t.title).join(" · ");
     const label=`${dayName(k,t0)}${date?" "+date:""}: ${arr.length?(open?open+" to do":"all done"):"free"}`;
     return `<div class="wk-row${arr.length?"":" free"}${k==="late"?" late":""}" style="--i:${i}">
@@ -1250,7 +1251,7 @@ function weekRowsHTML(list,now,t0){
   }).join("");
   return `<div class="tm-wrap"><div class="wk" role="group" aria-label="Your week">${rows}</div>
     <div class="tm-foot">${doneN?`<button class="linkbtn" data-tmdone aria-pressed="${tmDone}">${tmDone?"Hide done":`Show done (${doneN})`}</button>`:"<span></span>"}<button class="linkbtn" data-tmgo>See as a list</button></div>
-    ${infoText("map","Each row is a day. The colours show how its tasks are going: red late, amber due today or busy, green on track. Tap a day to see its tasks, or + to add one for that day.")}</div>`;
+    ${infoText("map","Each row is a day. Colours: <b>red</b> late · <b>mustard</b> due today or tomorrow, Important, or a busy day · <b>lilac</b> planned · <b>green</b> done. Tap a day to see its tasks, or + to add one for that day.")}</div>`;
 }
 /* Task map: one tile per task, for every category or the one picked in the chips above it.
    Colour = the task's RAG (done tasks green and struck through, shown only on "Show done").
@@ -1260,13 +1261,13 @@ function addTileHTML(b,W,H,i,pre){
   return `<button class="tmap-tile add-tile" style="${style}" data-addtile data-pre="${esc(pre||"")}" aria-label="Add a task"><span class="plus" aria-hidden="true">+</span><span class="add-l">Add</span></button>`;
 }
 function taskTreemapHTML(list,now,t0,pick=()=>true,head="",pre="",emptyMsg=""){
-  const cat=null,inCat=list.filter(pick),colour=taskColours(list,now,t0),RANK={r:0,a:1,g:2};
+  const cat=null,inCat=list.filter(pick),colour=taskColours(list,now,t0),RANK={r:0,a:1,p:2,g:3};
   const doneN=inCat.filter(t=>t.done).length,arr=tmDone?inCat:inCat.filter(t=>!t.done);
   const chips="";
   const foot=`<div class="tm-foot">${doneN?`<button class="linkbtn" data-tmdone aria-pressed="${tmDone}">${tmDone?"Hide done":`Show done (${doneN})`}</button>`:"<span></span>"}<button class="linkbtn" data-tmgo>See as a list</button></div>`;
   const addBtn=`<button class="tm-empty-add" data-addtile data-pre="${esc(pre)}">+ Add a task</button>`;
   if(!arr.length)return `<div class="tm-wrap">${head}<div class="tm-empty"><b>${inCat.length?"All done &amp; dusted ✨":list.length?"Nothing here yet":"Nothing here yet"}</b><span>${list.length?(emptyMsg||"Nothing open."):"Add your first task to get going."}</span>${addBtn}</div>${list.length?foot:""}</div>`;
-  const n={r:0,a:0,g:0};
+  const n={r:0,a:0,p:0,g:0};
   let items=arr.map(t=>{
     const k=colour(t);n[k]++;
     const sub=t.done?"Done":t.due?fmtDue(t.due):"No date";
@@ -1289,30 +1290,30 @@ function taskTreemapHTML(list,now,t0,pick=()=>true,head="",pre="",emptyMsg=""){
   return `<div class="tm-wrap">${chips}${head}
     <div class="tmap" role="group" aria-label="${cat?esc(cat)+" tasks":"Your tasks"}" style="height:${px}px">${tiles}</div>
     ${foot}
-    ${infoText("map","Each tile is a task. Red is late, amber is due today, green is on track. Bigger tiles need you sooner. Tap a task to finish it, move it, change it or delete it.")}</div>`;
+    ${infoText("map","Each tile is a task. <b>Red</b> late · <b>mustard</b> due today or tomorrow, or Important · <b>lilac</b> planned for later · <b>green</b> done. Bigger tiles need you sooner. Tap one to finish, move, change or delete it.")}</div>`;
 }
 /* One colour per task: Green = done, or open and on track · Amber = open and due today, Important, or on a day
    with 3+ open tasks · Red = open and past its time. A day's square is split by how many tasks are in each. */
 function taskColours(list,now,t0){
   const perDay={};list.forEach(t=>{if(!t.done&&t.due&&t.due>=now){const k=sod(t.due).getTime();perDay[k]=(perDay[k]||0)+1}});
-  return t=>t.done?"g":t.due<now?"r":(t.due<t0+DAY||t.pri||perDay[sod(t.due).getTime()]>=3)?"a":"g";
+  return t=>t.done?"g":t.due&&t.due<now?"r":((t.due&&t.due<t0+2*DAY)||t.pri||(t.due&&perDay[sod(t.due).getTime()]>=3))?"a":"p";
 }
 function heatmapHTML(list,now,t0){
   const rg=ragTasks(list,now,t0),colour=taskColours(list,now,t0);
   const pill=(k,i,sub)=>`<button class="rag-pill ${k}${hmReview&&hmReview.color===k?" on":""}" data-rag="${k}" style="--d:${i}" aria-pressed="${!!(hmReview&&hmReview.color===k)}"><span class="dot"></span><b data-n="${rg[k].length}">${rg[k].length}</b><span class="pl">${RAGW[k]}<small>${sub}</small></span></button>`;
   const cell=(s,i)=>{
     const d=new Date(s),day=list.filter(t=>t.due>=s&&t.due<s+DAY),st=cellStatus(day,s,now,t0);
-    const n={r:0,a:0,g:0};day.forEach(t=>n[colour(t)]++);
+    const n={r:0,a:0,p:0,g:0};day.forEach(t=>n[colour(t)]++);
     const pct=day.length?Math.round(day.filter(t=>t.done).length/day.length*100):0;
     const sel=hmSel&&hmSel.s===s;
-    const parts=["r","a","g"].filter(k=>n[k]).map(k=>`${n[k]} ${RAGW[k].toLowerCase()}`).join(", ");
+    const parts=["r","a","p","g"].filter(k=>n[k]).map(k=>`${n[k]} ${RAGW[k].toLowerCase()}`).join(", ");
     const lbl=`${d.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short"})}: ${day.length?day.length+" task"+(day.length>1?"s":"")+", "+pct+"% done ("+parts+")":"nothing due"}`;
     return `<button class="hm-cell ${st?"s-"+st:"n"}${n.r?" has-r":""}${s===t0?" today":""}${sel?" sel":""}" style="--w:${i}" data-c="All" data-s="${s}" aria-label="${esc(lbl)}" title="${esc(lbl)}"${st?"":" tabindex=\"-1\""}>
       <span class="hd"><span class="dw">${s===t0?"Today":d.toLocaleDateString("en-IN",{weekday:"short"})} ${d.getDate()}</span><b class="dp">${!st?"–":pct===100?"✓":pct+"%"}</b></span>
-      <span class="mix">${["r","a","g"].filter(k=>n[k]).map(k=>`<i class="${k}" style="flex:${n[k]}"></i>`).join("")}</span></button>`;
+      <span class="mix">${["r","a","p","g"].filter(k=>n[k]).map(k=>`<i class="${k}" style="flex:${n[k]}"></i>`).join("")}</span></button>`;
   };
   const row=(from,label,off)=>`<div class="strip-grp"><div class="strip-lbl">${label}</div><div class="strip-row">${[...Array(7)].map((_,i)=>cell(t0+(from+i)*DAY,off+i)).join("")}</div></div>`;
-  return `<div class="rag-sum" id="ragSum">${pill("r",0,"overdue")}${pill("a",1,"due today or at risk")}${pill("g",2,"on track")}</div>
+  return `<div class="rag-sum" id="ragSum">${pill("r",0,"time has passed")}${pill("a",1,"today, tomorrow or Important")}${pill("g",2,"later on")}</div>
   ${infoText("heat","Tap a day to open its tasks, or tap a colour to review its tasks one after another. Each square is split by how many of that day's tasks are in each colour. The % is how much is done.")}
   <div class="hm strip" role="group" aria-label="Status by day">${row(-7,"Last 7 days",0)}${row(0,"Today and the next 6 days",7)}</div>
   <div class="hm-detail" id="hm-detail">${hmDetail(list,now,t0)}</div>`;
@@ -1325,12 +1326,12 @@ function ragTasks(list,now,t0){
   const out={r:[],a:[],g:[]};
   for(const t of open){
     if(t.due<now)out.r.push(t);
-    else if(t.due<t0+DAY||t.pri||perDay[sod(t.due).getTime()]>=3)out.a.push(t);
+    else if(t.due<t0+2*DAY||t.pri||perDay[sod(t.due).getTime()]>=3)out.a.push(t);
     else out.g.push(t);
   }
   return out;
 }
-const RAGSUB={r:"Overdue. Finish these or give them a new day.",a:"Due today, or coming up on a heavy day or marked Important.",g:"On track. Nothing needed unless plans changed."};
+const RAGSUB={r:"Overdue. Finish these or give them a new day.",a:"Due today, or coming up on a heavy day or marked Important.",g:"Planned for later. Nothing needed yet unless plans changed."};
 function reviewHTML(list,now,t0){
   const k=hmReview.color,arr=ragTasks(list,now,t0)[k];
   const total=Math.max(hmReview.total||0,arr.length);hmReview.total=total;
@@ -1469,12 +1470,12 @@ function dayHTML(list,now,t0){
   const day=list.filter(t=>t.due>=ds&&t.due<ds+DAY).sort((a,b)=>a.due-b.due);
   if(!day.length)return "";
   const st=cellStatus(day,ds,now,t0),doneN=day.filter(t=>t.done).length,colour=taskColours(list,now,t0);
-  const n={r:0,a:0,g:0};day.forEach(t=>n[colour(t)]++);
+  const n={r:0,a:0,p:0,g:0};day.forEach(t=>n[colour(t)]++);
   const groups={};day.forEach(t=>{(groups[t.cat]=groups[t.cat]||[]).push(t)});
   const names=Object.keys(groups).sort((x,y)=>groups[y].length-groups[x].length||x.localeCompare(y));
   const rowH=t=>{const late=!t.done&&t.due<now;const k=colour(t);return `<div class="row rag-${k}${t.done?" done":""}" style="--cc:${cc(t.cat)}"><button class="tick" data-id="${esc(t.id)}" aria-label="${t.done?"Mark not done":"Mark done"}" style="${late?"border-color:var(--danger)":""}"></button><div class="body"><div class="t">${esc(t.title)}</div><div class="meta"><span class="rag-tag ${k}">${RAGW[k]}</span>${t.pri?'<span class="flag">● Important</span>':""}</div></div><span class="mono" style="color:${late?"var(--danger)":"var(--muted)"}">${esc(t.done?"Done":fmtDue(t.due))}</span></div>`};
   return `<div class="rv"><div class="rv-head"><h5>${doneN} of ${day.length} done</h5><span class="pop-pct">${Math.round(doneN/day.length*100)}%</span></div>
-   <div class="mixline"><span class="mix">${["r","a","g"].filter(k=>n[k]).map(k=>`<i class="${k}" style="flex:${n[k]}"></i>`).join("")}</span><span class="mono">${["r","a","g"].filter(k=>n[k]).map(k=>`${n[k]} ${RAGW[k].toLowerCase()}`).join(" · ")}</span></div>
+   <div class="mixline"><span class="mix">${["r","a","p","g"].filter(k=>n[k]).map(k=>`<i class="${k}" style="flex:${n[k]}"></i>`).join("")}</span><span class="mono">${["r","a","p","g"].filter(k=>n[k]).map(k=>`${n[k]} ${RAGW[k].toLowerCase()}`).join(" · ")}</span></div>
    ${names.map(c=>{const g=groups[c],d=g.filter(t=>t.done).length;return `<div class="cat-grp"><div class="cat-lbl" style="--cc:${cc(c)}"><i></i>${esc(c)}<span class="mono">${d}/${g.length}</span></div><div class="list">${g.map(rowH).join("")}</div></div>`}).join("")}</div>`;
 }
 

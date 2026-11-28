@@ -173,3 +173,11 @@ test("shared lists: round trip, and resending updates instead of duplicating", a
   assert.equal(plan.done.length, 1);
   assert.equal(plan.update.length, 1);
 });
+test("dates: bare 'today' is never already overdue", () => {
+  const morning = new Date(2026, 10, 28, 7, 30), evening = new Date(2026, 10, 28, 19, 42), late = new Date(2026, 10, 28, 22, 10);
+  const h = (now) => new Date(parseWhen("call mom today", now).due).getHours();
+  assert.equal(h(morning), 9);   // before 9am: 9am as before
+  assert.equal(h(evening), 21);  // after 9am: this evening
+  assert.equal(h(late), 23);     // after 9pm: the last minute of the day
+  assert.equal(new Date(parseWhen("call mom today 6pm", evening).due).getHours(), 18); // a time you give is kept
+});
